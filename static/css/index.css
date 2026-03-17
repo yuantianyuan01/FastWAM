@@ -49,7 +49,7 @@ a:hover {
   max-width: 980px;
   margin: 0 auto 1rem;
   line-height: 1.05;
-  font-size: clamp(2.5rem, 4.4vw, 3.8rem) !important;
+  font-size: clamp(2.2rem, 4vw, 3.3rem) !important;
 }
 
 .section-title {
@@ -415,7 +415,7 @@ pre {
   }
 
   .publication-title {
-    font-size: 2.1rem !important;
+    font-size: 1.95rem !important;
   }
 
   .section {
