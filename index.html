@@ -160,7 +160,7 @@
         </p>
         <div class="mini-points">
           <div class="mini-point"><strong>Backbone:</strong> Wan2.2-5B video DiT with a 1B action expert</div>
-          <div class="mini-point"><strong>Policy horizon:</strong> 32-step action chunks</div>
+          <!-- <div class="mini-point"><strong>Policy horizon:</strong> 32-step action chunks</div> -->
           <div class="mini-point"><strong>Runtime:</strong> 190 ms on a single RTX 5090D V2 32GB GPU</div>
         </div>
       </div>
@@ -200,18 +200,18 @@
               </tr>
             </thead>
             <tbody>
-              <tr><td>&pi;<sub>0</sub></td><td>Yes</td><td>65.92</td><td>58.40</td><td>62.2</td></tr>
-              <tr><td>&pi;<sub>0.5</sub></td><td>Yes</td><td>82.74</td><td>76.76</td><td>79.8</td></tr>
-              <tr><td>Motus</td><td>Yes</td><td>88.66</td><td>87.02</td><td>87.8</td></tr>
-              <tr><td>Motus from WAN2.2</td><td>No</td><td>77.56</td><td>77.00</td><td>77.3</td></tr>
-              <tr><td>LingBot-VA</td><td>Yes</td><td>92.90</td><td>91.50</td><td><span class="best-score">92.2</span></td></tr>
-              <tr><td>LingBot-VA from WAN2.2</td><td>No</td><td>80.60</td><td>--</td><td>80.6</td></tr>
-              <tr class="ours-row"><td>Fast-WAM (Ours)</td><td>No</td><td>91.88</td><td>91.78</td><td><span class="second-score">91.8</span></td></tr>
+              <tr><td>&pi;<sub>0</sub></td><td>&#10003;</td><td>65.92</td><td>58.40</td><td>62.2</td></tr>
+              <tr><td>&pi;<sub>0.5</sub></td><td>&#10003;</td><td>82.74</td><td>76.76</td><td>79.8</td></tr>
+              <tr><td>Motus</td><td>&#10003;</td><td>88.66</td><td>87.02</td><td>87.8</td></tr>
+              <tr><td>Motus from WAN2.2</td><td>&#10007;</td><td>77.56</td><td>77.00</td><td>77.3</td></tr>
+              <tr><td>LingBot-VA</td><td>&#10003;</td><td>92.90</td><td>91.50</td><td><span class="best-score">92.2</span></td></tr>
+              <tr><td>LingBot-VA from WAN2.2</td><td>&#10007;</td><td>80.60</td><td>--</td><td>80.6</td></tr>
+              <tr class="ours-row"><td>Fast-WAM (Ours)</td><td>&#10007;</td><td>91.88</td><td>91.78</td><td><span class="second-score">91.8</span></td></tr>
               <tr class="group-row"><td colspan="5">Fast-WAM Variants</td></tr>
-              <tr class="variant-row"><td>Fast-WAM</td><td>No</td><td>91.88</td><td>91.78</td><td><span class="second-score">91.8</span></td></tr>
-              <tr class="variant-row"><td>Fast-WAM-Joint</td><td>No</td><td>90.84</td><td>90.32</td><td>90.6</td></tr>
-              <tr class="variant-row"><td>Fast-WAM-IDM</td><td>No</td><td>91.16</td><td>91.34</td><td>91.3</td></tr>
-              <tr class="no-cotrain-row"><td>Fast-WAM w.o. video co-train</td><td>No</td><td>82.76</td><td>84.80</td><td>83.8</td></tr>
+              <tr class="variant-row"><td>Fast-WAM</td><td>&#10007;</td><td>91.88</td><td>91.78</td><td><span class="second-score">91.8</span></td></tr>
+              <tr class="variant-row"><td>Fast-WAM-Joint</td><td>&#10007;</td><td>90.84</td><td>90.32</td><td>90.6</td></tr>
+              <tr class="variant-row"><td>Fast-WAM-IDM</td><td>&#10007;</td><td>91.16</td><td>91.34</td><td>91.3</td></tr>
+              <tr class="no-cotrain-row"><td>Fast-WAM w.o. video co-train</td><td>&#10007;</td><td>82.76</td><td>84.80</td><td>83.8</td></tr>
             </tbody>
           </table>
         </div>
@@ -233,17 +233,17 @@
               </tr>
             </thead>
             <tbody>
-              <tr><td>OpenVLA</td><td>Yes</td><td>84.7</td><td>88.4</td><td>79.2</td><td>53.7</td><td>76.5</td></tr>
-              <tr><td>&pi;<sub>0</sub></td><td>Yes</td><td>96.8</td><td>98.8</td><td>95.8</td><td>85.2</td><td>94.1</td></tr>
-              <tr><td>&pi;<sub>0.5</sub></td><td>Yes</td><td>98.8</td><td>98.2</td><td>98.0</td><td>92.4</td><td>96.9</td></tr>
-              <tr><td>LingBot-VA</td><td>Yes</td><td>98.5</td><td>99.6</td><td>97.2</td><td>98.5</td><td><span class="best-score">98.5</span></td></tr>
-              <tr><td>Motus</td><td>Yes</td><td>96.8</td><td>99.8</td><td>96.6</td><td>97.6</td><td>97.7</td></tr>
-              <tr class="ours-row"><td>Fast-WAM (Ours)</td><td>No</td><td>98.2</td><td>100.0</td><td>97.0</td><td>95.2</td><td>97.6</td></tr>
+              <tr><td>OpenVLA</td><td>&#10003;</td><td>84.7</td><td>88.4</td><td>79.2</td><td>53.7</td><td>76.5</td></tr>
+              <tr><td>&pi;<sub>0</sub></td><td>&#10003;</td><td>96.8</td><td>98.8</td><td>95.8</td><td>85.2</td><td>94.1</td></tr>
+              <tr><td>&pi;<sub>0.5</sub></td><td>&#10003;</td><td>98.8</td><td>98.2</td><td>98.0</td><td>92.4</td><td>96.9</td></tr>
+              <tr><td>LingBot-VA</td><td>&#10003;</td><td>98.5</td><td>99.6</td><td>97.2</td><td>98.5</td><td><span class="best-score">98.5</span></td></tr>
+              <tr><td>Motus</td><td>&#10003;</td><td>96.8</td><td>99.8</td><td>96.6</td><td>97.6</td><td>97.7</td></tr>
+              <tr class="ours-row"><td>Fast-WAM (Ours)</td><td>&#10007;</td><td>98.2</td><td>100.0</td><td>97.0</td><td>95.2</td><td>97.6</td></tr>
               <tr class="group-row"><td colspan="7">Fast-WAM Variants</td></tr>
-              <tr class="variant-row"><td>Fast-WAM</td><td>No</td><td>98.2</td><td>100.0</td><td>97.0</td><td>95.2</td><td>97.6</td></tr>
-              <tr class="variant-row"><td>Fast-WAM-Joint</td><td>No</td><td>99.6</td><td>99.4</td><td>98.2</td><td>96.8</td><td><span class="best-score">98.5</span></td></tr>
-              <tr class="variant-row"><td>Fast-WAM-IDM</td><td>No</td><td>98.8</td><td>97.8</td><td>97.8</td><td>97.6</td><td><span class="second-score">98.0</span></td></tr>
-              <tr class="no-cotrain-row"><td>Fast-WAM w.o. video co-train</td><td>No</td><td>89.2</td><td>99.2</td><td>95.4</td><td>90.0</td><td>93.5</td></tr>
+              <tr class="variant-row"><td>Fast-WAM</td><td>&#10007;</td><td>98.2</td><td>100.0</td><td>97.0</td><td>95.2</td><td>97.6</td></tr>
+              <tr class="variant-row"><td>Fast-WAM-Joint</td><td>&#10007;</td><td>99.6</td><td>99.4</td><td>98.2</td><td>96.8</td><td><span class="best-score">98.5</span></td></tr>
+              <tr class="variant-row"><td>Fast-WAM-IDM</td><td>&#10007;</td><td>98.8</td><td>97.8</td><td>97.8</td><td>97.6</td><td><span class="second-score">98.0</span></td></tr>
+              <tr class="no-cotrain-row"><td>Fast-WAM w.o. video co-train</td><td>&#10007;</td><td>89.2</td><td>99.2</td><td>95.4</td><td>90.0</td><td>93.5</td></tr>
             </tbody>
           </table>
         </div>

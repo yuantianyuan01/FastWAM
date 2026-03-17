@@ -283,6 +283,10 @@ a:hover {
   margin-top: 2rem;
 }
 
+.caption + .table-block {
+  margin-top: 1.25rem;
+}
+
 .table-block-narrow {
   width: 80%;
   margin-left: auto;
@@ -332,6 +336,13 @@ a:hover {
   border-bottom: 1px solid rgba(40, 34, 24, 0.08);
   text-align: left;
   font-size: 0.96rem;
+}
+
+.results-table th:nth-child(2),
+.results-table td:nth-child(2) {
+  text-align: center;
+  font-weight: 700;
+  font-size: 1rem;
 }
 
 .results-table thead th {
