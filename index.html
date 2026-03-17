@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="description" content="Fast-WAM: Do World Action Models Need Test-time Future Imagination?">
+  <meta name="keywords" content="Fast-WAM, World Action Models, Robotics, Embodied AI">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fast-WAM: Do World Action Models Need Test-time Future Imagination?</title>
+
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro" rel="stylesheet">
+  <link rel="stylesheet" href="./static/css/bulma.min.css">
+  <link rel="stylesheet" href="./static/css/index.css">
+  <link rel="icon" href="https://github.githubassets.com/favicons/favicon.svg">
+</head>
+<body>
+  <section class="hero publication-hero">
+    <div class="hero-body">
+      <div class="container is-max-desktop">
+        <div class="hero-copy has-text-centered">
+          <h1 class="title is-1 publication-title">Fast-WAM: Do World Action Models Need Test-time Future Imagination?</h1>
+
+          <div class="is-size-5 publication-authors">
+            <span class="author-block"><a href="https://yuantianyuan01.github.io/">Tianyuan Yuan</a><sup>1,2</sup>,</span>
+            <span class="author-block"><a href="https://zibindong.github.io/">Zibin Dong</a><sup>1,2</sup>,</span>
+            <span class="author-block"><a href="https://scholar.google.com/citations?user=vRmsgQUAAAAJ">Yicheng Liu</a><sup>1,2</sup>,</span>
+            <span class="author-block"><a href="https://hangzhaomit.github.io/">Hang Zhao</a><sup>1,2</sup></span>
+          </div>
+
+          <div class="is-size-5 publication-affiliations">
+            <span class="author-block"><sup>1</sup>IIIS, Tsinghua University</span>
+            <span class="author-block"><sup>2</sup>Galaxea AI</span>
+          </div>
+
+          <div class="publication-links">
+            <span class="link-block">
+              <span class="button is-rounded is-dark is-static">
+                <span>Paper Coming Soon</span>
+              </span>
+            </span>
+            <span class="link-block">
+              <a href="https://github.com/yuantianyuan01/FastWAM" class="external-link button is-rounded is-dark">
+                <span>Code</span>
+              </a>
+            </span>
+            <span class="link-block">
+              <a href="#bibtex" class="external-link button is-rounded is-dark">
+                <span>BibTeX</span>
+              </a>
+            </span>
+          </div>
+
+          <div class="tldr-card">
+            <p class="tldr-badge">TL;DR</p>
+            <div class="tldr-item">
+              <p class="tldr-label">Q</p>
+              <p class="tldr-text">Do WAMs benefit mainly from explicit future imagination at inference, or from video modeling during training?</p>
+            </div>
+            <div class="tldr-item">
+              <p class="tldr-label">A</p>
+              <p class="tldr-text">The main benefit comes from video co-training during training. Fast-WAM removes explicit future generation at test time, stays competitive, and runs much faster.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-figure">
+          <figure class="image frame-card">
+            <img src="./static/images/teaser_main.png" alt="Three representative WAM paradigms and the Fast-WAM design.">
+          </figure>
+          <p class="caption has-text-centered">
+            Fast-WAM keeps video co-training during training but removes explicit future generation at inference time,
+            enabling direct action generation from latent world representations in a single forward pass.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-soft" id="abstract">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column is-four-fifths">
+          <h2 class="title is-3 section-title">Abstract</h2>
+          <div class="content lead-text">
+            <p>
+              World Action Models (WAMs) have emerged as a promising alternative to Vision-Language-Action (VLA)
+              models for embodied control because they explicitly model how visual observations may evolve under
+              action. Most existing WAMs follow an imagine-then-execute paradigm, incurring substantial test-time
+              latency from iterative video denoising, yet it remains unclear whether explicit future imagination is
+              actually necessary for strong action performance.
+            </p>
+            <p>
+              We ask whether WAMs need explicit future imagination at test time, or whether their benefit comes
+              primarily from video modeling during training. To answer this, we propose <strong>Fast-WAM</strong>, a
+              WAM architecture that retains video co-training during training but skips future prediction at test
+              time. Across controlled variants, Fast-WAM remains competitive with imagine-then-execute variants,
+              while removing video co-training causes a much larger performance drop.
+            </p>
+            <p>
+              Empirically, Fast-WAM achieves competitive results on LIBERO, RoboTwin, and real-world towel folding
+              without embodied pretraining. It runs in real time with <strong>190 ms</strong> latency, more than
+              <strong>4x faster</strong> than existing imagine-then-execute WAM designs.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="question-spotlight highlight-card">
+        <p class="card-label">Core Question</p>
+        <p class="question-line">
+          Do WAMs benefit mainly from explicit future imagination at inference, or from video modeling during training?
+        </p>
+      </div>
+
+      <div class="columns is-variable is-5 contribution-grid">
+        <div class="column is-half">
+          <div class="highlight-card">
+            <p class="card-label">Design</p>
+            <p>Fast-WAM preserves world-model supervision during training while using a direct-policy interface at test time.</p>
+          </div>
+        </div>
+        <div class="column is-half">
+          <div class="highlight-card">
+            <p class="card-label">Finding</p>
+            <p>Video co-training matters much more than explicit test-time future generation for final control performance.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="method">
+    <div class="container is-max-desktop">
+      <h2 class="title is-3 section-title">A WAM That Drops Future Imagination at Test Time</h2>
+
+      <div class="method-figure-row">
+        <div class="method-main-figure">
+          <figure class="image frame-card frame-card-plain">
+            <img src="./static/images/model_arch.png" alt="Fast-WAM model architecture.">
+          </figure>
+          <p class="caption">Fast-WAM architecture with a shared-attention Mixture-of-Transformer design.</p>
+        </div>
+        <div class="method-side-figure">
+          <figure class="image frame-card frame-card-plain">
+            <img src="./static/images/mask.png" alt="Training and inference attention masks.">
+          </figure>
+          <p class="caption">Structured attention masks disentangle video co-training from action generation.</p>
+        </div>
+      </div>
+
+      <div class="content method-copy">
+        <p>
+          Fast-WAM is built on a pretrained video Diffusion Transformer backbone and an action expert DiT. During
+          training, it jointly learns action prediction and video modeling so the shared visual backbone acquires
+          stronger world-grounded representations.
+        </p>
+        <p>
+          At inference time, Fast-WAM keeps only the clean latent tokens of the current observation, processes them
+          with the video backbone once, and directly generates actions without explicit future video denoising.
+          This removes the main runtime bottleneck of imagine-then-execute WAMs.
+        </p>
+        <div class="mini-points">
+          <div class="mini-point"><strong>Backbone:</strong> Wan2.2-5B video DiT with a 1B action expert</div>
+          <div class="mini-point"><strong>Policy horizon:</strong> 32-step action chunks</div>
+          <div class="mini-point"><strong>Runtime:</strong> 190 ms on a single RTX 5090D V2 32GB GPU</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="results">
+    <div class="container is-max-desktop">
+      <h2 class="title is-3 section-title">Results on Simulation and Real-World Tasks</h2>
+      <div class="content">
+        <p>
+          We evaluate Fast-WAM on LIBERO, RoboTwin 2.0, and a real-world towel-folding task. Across all settings, the
+          central pattern is consistent: Fast-WAM remains close to imagine-then-execute variants, while removing video
+          co-training causes a much larger performance drop.
+        </p>
+      </div>
+
+      <figure class="image frame-card wide-figure">
+        <img src="./static/images/bench_grid.png" alt="Real-world towel-folding benchmark on Galaxea R1 Lite.">
+      </figure>
+      <p class="caption has-text-centered">
+        Real-world towel-folding benchmark. Folding a deformable object requires long-horizon planning and precise
+        closed-loop manipulation, making it a useful testbed for both success and execution efficiency.
+      </p>
+
+      <div class="table-block table-block-narrow">
+        <h3 class="title is-5">RoboTwin 2.0</h3>
+        <div class="table-wrapper">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Embodied PT.</th>
+                <th>Clean</th>
+                <th>Rand.</th>
+                <th>Average</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>&pi;<sub>0</sub></td><td>Yes</td><td>65.92</td><td>58.40</td><td>62.2</td></tr>
+              <tr><td>&pi;<sub>0.5</sub></td><td>Yes</td><td>82.74</td><td>76.76</td><td>79.8</td></tr>
+              <tr><td>Motus</td><td>Yes</td><td>88.66</td><td>87.02</td><td>87.8</td></tr>
+              <tr><td>Motus from WAN2.2</td><td>No</td><td>77.56</td><td>77.00</td><td>77.3</td></tr>
+              <tr><td>LingBot-VA</td><td>Yes</td><td>92.90</td><td>91.50</td><td><span class="best-score">92.2</span></td></tr>
+              <tr><td>LingBot-VA from WAN2.2</td><td>No</td><td>80.60</td><td>--</td><td>80.6</td></tr>
+              <tr class="ours-row"><td>Fast-WAM (Ours)</td><td>No</td><td>91.88</td><td>91.78</td><td><span class="second-score">91.8</span></td></tr>
+              <tr class="group-row"><td colspan="5">Fast-WAM Variants</td></tr>
+              <tr class="variant-row"><td>Fast-WAM</td><td>No</td><td>91.88</td><td>91.78</td><td><span class="second-score">91.8</span></td></tr>
+              <tr class="variant-row"><td>Fast-WAM-Joint</td><td>No</td><td>90.84</td><td>90.32</td><td>90.6</td></tr>
+              <tr class="variant-row"><td>Fast-WAM-IDM</td><td>No</td><td>91.16</td><td>91.34</td><td>91.3</td></tr>
+              <tr class="no-cotrain-row"><td>Fast-WAM w.o. video co-train</td><td>No</td><td>82.76</td><td>84.80</td><td>83.8</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="table-block table-block-narrow">
+        <h3 class="title is-5">LIBERO</h3>
+        <div class="table-wrapper">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Embodied PT.</th>
+                <th>Spatial</th>
+                <th>Object</th>
+                <th>Goal</th>
+                <th>Long</th>
+                <th>Average</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>OpenVLA</td><td>Yes</td><td>84.7</td><td>88.4</td><td>79.2</td><td>53.7</td><td>76.5</td></tr>
+              <tr><td>&pi;<sub>0</sub></td><td>Yes</td><td>96.8</td><td>98.8</td><td>95.8</td><td>85.2</td><td>94.1</td></tr>
+              <tr><td>&pi;<sub>0.5</sub></td><td>Yes</td><td>98.8</td><td>98.2</td><td>98.0</td><td>92.4</td><td>96.9</td></tr>
+              <tr><td>LingBot-VA</td><td>Yes</td><td>98.5</td><td>99.6</td><td>97.2</td><td>98.5</td><td><span class="best-score">98.5</span></td></tr>
+              <tr><td>Motus</td><td>Yes</td><td>96.8</td><td>99.8</td><td>96.6</td><td>97.6</td><td>97.7</td></tr>
+              <tr class="ours-row"><td>Fast-WAM (Ours)</td><td>No</td><td>98.2</td><td>100.0</td><td>97.0</td><td>95.2</td><td>97.6</td></tr>
+              <tr class="group-row"><td colspan="7">Fast-WAM Variants</td></tr>
+              <tr class="variant-row"><td>Fast-WAM</td><td>No</td><td>98.2</td><td>100.0</td><td>97.0</td><td>95.2</td><td>97.6</td></tr>
+              <tr class="variant-row"><td>Fast-WAM-Joint</td><td>No</td><td>99.6</td><td>99.4</td><td>98.2</td><td>96.8</td><td><span class="best-score">98.5</span></td></tr>
+              <tr class="variant-row"><td>Fast-WAM-IDM</td><td>No</td><td>98.8</td><td>97.8</td><td>97.8</td><td>97.6</td><td><span class="second-score">98.0</span></td></tr>
+              <tr class="no-cotrain-row"><td>Fast-WAM w.o. video co-train</td><td>No</td><td>89.2</td><td>99.2</td><td>95.4</td><td>90.0</td><td>93.5</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <figure class="image frame-card result-figure-large">
+        <img src="./static/images/method_scatter_latency.png" alt="Fast-WAM real-world performance and latency.">
+      </figure>
+      <div class="content result-summary">
+        <p>
+          Fast-WAM achieves strong real-world performance with substantially lower latency than imagine-then-execute
+          baselines. Fast-WAM-IDM is slower at 810 ms, while Fast-WAM keeps latency at 190 ms.
+        </p>
+        <p>
+          Removing video co-training causes a dramatic degradation in both success and completion time, again
+          reinforcing that co-training matters more than explicit future imagination at inference.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-soft" id="conclusion">
+    <div class="container is-max-desktop">
+      <h2 class="title is-3 section-title">Video Co-Training Matters More Than Test-Time Imagination</h2>
+      <div class="content lead-text">
+        <p>
+          Fast-WAM revisits a basic question in World Action Models: do their gains come from explicit future
+          imagination at test time, or from video modeling during training? Across simulation and real-world results,
+          the answer appears consistent: Fast-WAM remains close to imagine-then-execute variants, while removing video
+          co-training causes a much larger degradation.
+        </p>
+        <p>
+          This suggests the main value of video prediction in WAMs may lie in learning better world representations
+          during training rather than generating future observations at test time.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="bibtex">
+    <div class="container is-max-desktop content">
+      <h2 class="title is-3 section-title">BibTeX</h2>
+      <pre><code>@misc{yuan2026fastwam,
+  title={Fast-WAM: Do World Action Models Need Test-time Future Imagination?},
+  author={Tianyuan Yuan and Zibin Dong and Yicheng Liu and Hang Zhao},
+  year={2026},
+  note={Manuscript in preparation}
+}</code></pre>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="content has-text-centered">
+        <a class="icon-link" href="https://github.com/yuantianyuan01/FastWAM">GitHub</a>
+      </div>
+      <div class="columns is-centered">
+        <div class="column is-8">
+          <div class="content has-text-centered">
+            <p>This page is an initial project-page draft generated from the current Overleaf manuscript and figures.</p>
+            <p>Website template originally adapted from <a href="https://github.com/nerfies/nerfies.github.io">Nerfies</a>.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
