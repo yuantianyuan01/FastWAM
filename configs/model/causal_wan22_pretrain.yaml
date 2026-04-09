@@ -3,8 +3,8 @@ model_id: Wan-AI/Wan2.2-TI2V-5B
 tokenizer_model_id: Wan-AI/Wan2.1-T2V-1.3B
 tokenizer_max_len: 128
 redirect_common_files: false
-skip_dit_load_from_pretrain: true
-load_text_encoder: true # CHECK
+skip_dit_load_from_pretrain: false
+load_text_encoder: false
 
 train_shift: 5.0
 infer_shift: 5.0

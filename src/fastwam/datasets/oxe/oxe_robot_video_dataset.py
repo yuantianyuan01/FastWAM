@@ -36,6 +36,7 @@ class OXERobotVideoDataset(torch.utils.data.IterableDataset):
         num_frames: int,
         frame_size: tuple[int, int],
         video_size: tuple[int, int],
+        load_camera_views: list[str],
         shuffle_buffer_size: int,
         image_aug: bool = False,
         text_embedding_cache_dir=None,
@@ -73,19 +74,19 @@ class OXERobotVideoDataset(torch.utils.data.IterableDataset):
             mixture_spec = OXE_NAMED_MIXTURES[self.data_mix]
         else:
             mixture_spec = [(self.data_mix, 1.0)]
-        load_camera_views = ("primary", "secondary")
+        self.load_camera_views = load_camera_views
 
         # Upstream obs_transforms expects `resize_size` as a dict
         # {camera_name: (H, W)}. Convert to plain tuples so that this works
         # regardless of whether `frame_size` came in as tuple/list/OmegaConf
         # ListConfig (Hydra instantiation yields ListConfig).
         frame_size = tuple(int(x) for x in frame_size)
-        resize_size_per_camera = {name: frame_size for name in load_camera_views}
+        resize_size_per_camera = {name: frame_size for name in self.load_camera_views}
 
         per_dataset_kwargs, weights = get_oxe_dataset_kwargs_and_weights(
             self.dataset_dirs,
             mixture_spec,
-            load_camera_views=load_camera_views,
+            load_camera_views=self.load_camera_views,
             load_depth=False,
             load_proprio=True,
             load_language=True,
@@ -149,8 +150,7 @@ class OXERobotVideoDataset(torch.utils.data.IterableDataset):
         self.override_instruction = override_instruction
 
     def transform(self, rlds_traj):
-        
-        observation_image_keys = ["image_primary", "image_secondary"]
+        observation_image_keys = ["image_"+view for view in self.load_camera_views]
         observation_proprio_key = "proprio"
         language_key = "language_instruction"
         
@@ -260,17 +260,17 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_dirs", type=str, default="./data/oxe")
-    parser.add_argument("--data_mix", type=str, default="bridge")
+    parser.add_argument("--data_mix", type=str, default="droid")
     parser.add_argument("--num_frames", type=int, default=33)
     parser.add_argument("--frame_h", type=int, default=224)
     parser.add_argument("--frame_w", type=int, default=224)
     parser.add_argument("--video_h", type=int, default=224)
-    parser.add_argument("--video_w", type=int, default=448)
-    parser.add_argument("--shuffle_buffer_size", type=int, default=128)
+    parser.add_argument("--video_w", type=int, default=224*3)
+    parser.add_argument("--shuffle_buffer_size", type=int, default=4096)
     parser.add_argument("--action_video_freq_ratio", type=int, default=1)
     parser.add_argument("--concat_multi_camera", type=str, default="horizontal")
     parser.add_argument("--image_aug", action="store_true")
-    parser.add_argument("--num_batches", type=int, default=5)
+    parser.add_argument("--num_batches", type=int, default=20)
     parser.add_argument("--output_dir", type=str, default="./runs/debug/oxe_samples")
     parser.add_argument("--fps", type=int, default=8)
     args = parser.parse_args()
@@ -283,6 +283,7 @@ if __name__ == "__main__":
         num_frames=args.num_frames,
         frame_size=(args.frame_h, args.frame_w),
         video_size=(args.video_h, args.video_w),
+        load_camera_views=["primary", "secondary", "wrist"],
         shuffle_buffer_size=args.shuffle_buffer_size,
         image_aug=args.image_aug,
         text_embedding_cache_dir=f"./data/cache/{args.data_mix}/",

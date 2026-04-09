@@ -35,9 +35,11 @@ import json
 import logging
 import time
 from pathlib import Path
+from typing import Optional
 
 import hydra
 import torch
+from tqdm import tqdm
 from accelerate import Accelerator
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
@@ -201,6 +203,79 @@ def _load_resume(accelerator: Accelerator, resume: str) -> int:
     return global_step
 
 
+def _format_eta_seconds(seconds: float) -> str:
+    seconds = max(int(seconds), 0)
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _gpu_memory_gb() -> tuple[float, float]:
+    """Return (peak allocated, peak reserved) GB on the current CUDA device."""
+    if not torch.cuda.is_available():
+        return 0.0, 0.0
+    alloc = torch.cuda.max_memory_allocated() / (1024**3)
+    reserved = torch.cuda.max_memory_reserved() / (1024**3)
+    return float(alloc), float(reserved)
+
+
+@torch.no_grad()
+def _run_validation(
+    unwrapped_model,
+    val_iter,
+    val_loader,
+    accelerator: Accelerator,
+    iters_per_rank: int,
+    mini_batch_size: int,
+):
+    """Compute the teacher-forcing training loss on a small held-out
+    validation set (an OOD dataset mix in practice — see
+    ``configs/data/causal_wan22_pretrain.yaml`` which trains on droid and
+    validates on bridge).
+
+    Each rank pulls ``iters_per_rank`` mini-batches (of size
+    ``mini_batch_size``) from its own val stream; losses are weighted by the
+    number of elements per batch and gathered across ranks so the returned
+    mean is over ``iters_per_rank * num_processes * mini_batch_size`` samples.
+    """
+    prior_training = unwrapped_model.dit.training
+    unwrapped_model.eval()
+
+    local_loss_sum = 0.0
+    local_count = 0.0
+    for _ in range(iters_per_rank):
+        try:
+            sample = next(val_iter)
+        except StopIteration:
+            val_iter = iter(val_loader)
+            sample = next(val_iter)
+
+        with accelerator.autocast():
+            val_loss, _ = unwrapped_model.training_loss(sample)
+        # val_loss is already a scalar (mean over the mini-batch). Weight by
+        # the mini-batch count so the cross-rank reduction stays a true mean.
+        batch_n = float(sample["video"].shape[0])
+        local_loss_sum += float(val_loss.detach().float().item()) * batch_n
+        local_count += batch_n
+
+    if prior_training:
+        unwrapped_model.dit.train()
+        unwrapped_model.dit.requires_grad_(True)
+
+    local = torch.tensor(
+        [local_loss_sum, local_count],
+        device=accelerator.device,
+        dtype=torch.float32,
+    )
+    gathered = accelerator.gather(local.unsqueeze(0)).reshape(-1, 2)
+    total_sum = gathered[:, 0].sum().item()
+    total_count = gathered[:, 1].sum().item()
+    return {
+        "val_loss": float(total_sum / max(total_count, 1.0)),
+        "samples": int(total_count),
+    }
+
+
 def _init_wandb(cfg: DictConfig, accelerator: Accelerator, output_dir: str):
     if not bool(cfg.wandb.enabled) or not accelerator.is_main_process:
         return None
@@ -266,15 +341,59 @@ def main(cfg: DictConfig):
             "`num_workers` must be 0 for OXERobotVideoDataset — tf.data graphs "
             "are not pickle/fork-safe for DataLoader worker subprocesses."
         )
+
+    # `cfg.batch_size` is the **global** batch size summed across all ranks
+    # for a single forward pass. The DataLoader on each rank uses
+    # `mini_batch_size = global_batch_size // num_processes`; the effective
+    # batch per optimizer step is `global_batch_size * grad_accum`.
+    num_processes = int(accelerator.num_processes)
+    global_batch_size = int(cfg.batch_size)
+    if global_batch_size % num_processes != 0:
+        raise ValueError(
+            f"`batch_size` ({global_batch_size}) must be divisible by the "
+            f"number of processes ({num_processes})."
+        )
+    mini_batch_size = global_batch_size // num_processes
+    if mini_batch_size < 1:
+        raise ValueError(
+            f"Computed mini_batch_size={mini_batch_size} < 1 "
+            f"(global={global_batch_size}, num_processes={num_processes})."
+        )
+    logger.info(
+        "Batch sizing: global=%d num_processes=%d mini=%d",
+        global_batch_size, num_processes, mini_batch_size,
+    )
+
     train_loader = DataLoader(
         train_dataset,
-        batch_size=int(cfg.batch_size),
+        batch_size=mini_batch_size,
         shuffle=False,  # IterableDataset — the underlying tf.data pipeline shuffles
         num_workers=0,
         pin_memory=torch.cuda.is_available(),
         drop_last=True,
         collate_fn=_tensor_only_collate,
     )
+
+    # Optional validation dataset (only built if the task actually runs eval).
+    # Uses the same per-rank mini_batch_size as training.
+    val_loader = None
+    eval_every = int(cfg.get("eval_every", 0) or 0)
+    if eval_every > 0 and cfg.data.get("val") is not None:
+        logger.info("Building OXE val dataset")
+        val_dataset = instantiate(
+            cfg.data.val,
+            seed=int(cfg.seed) + 10_000,  # offset so val != train stream
+            rank=int(accelerator.process_index),
+        )
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=mini_batch_size,
+            shuffle=False,
+            num_workers=0,
+            pin_memory=torch.cuda.is_available(),
+            drop_last=True,
+            collate_fn=_tensor_only_collate,
+        )
 
     # --- optimizer ---
     trainable_params = [p for p in model.dit.parameters() if p.requires_grad]
@@ -346,9 +465,35 @@ def main(cfg: DictConfig):
     run_start_step = global_step
 
     data_iter = iter(train_loader)
+    val_iter = iter(val_loader) if val_loader is not None else None
     last_saved_step = global_step  # avoid double-saving at a boundary
+    loss_ema: Optional[float] = None  # smoothed training loss
 
+    # `eval_num_samples` is a **total** count across all ranks. We distribute
+    # it over `num_processes * mini_batch_size` samples per eval iteration
+    # and round up so we process at least `eval_num_samples` total.
+    eval_num_samples = int(cfg.get("eval_num_samples", 1) or 1)
+    samples_per_eval_iter = max(num_processes * mini_batch_size, 1)
+    eval_iters_per_rank = max(
+        1, (eval_num_samples + samples_per_eval_iter - 1) // samples_per_eval_iter
+    )
+    actual_eval_total = eval_iters_per_rank * samples_per_eval_iter
+    if val_loader is not None and actual_eval_total != eval_num_samples:
+        logger.info(
+            "Rounding eval_num_samples %d -> %d (%d iter/rank * %d rank * %d mb)",
+            eval_num_samples,
+            actual_eval_total,
+            eval_iters_per_rank,
+            num_processes,
+            mini_batch_size,
+        )
+
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+
+    pbar = tqdm(total=total_train_steps, desc="Pretraining")
     while global_step < total_train_steps:
+        pbar.update(1)
         try:
             sample = next(data_iter)
         except StopIteration:
@@ -394,32 +539,91 @@ def main(cfg: DictConfig):
                         global_loss_dict[k] = float(
                             accelerator.gather(metric_tensor).mean().item()
                         )
+
+                    loss_ema = (
+                        global_loss if loss_ema is None
+                        else 0.98 * loss_ema + 0.02 * global_loss
+                    )
+
                     current_lr = float(optimizer.param_groups[0]["lr"])
                     elapsed = max(time.perf_counter() - run_start, 1e-6)
-                    sps = max(global_step - run_start_step, 1) / elapsed
+                    done_steps = max(global_step - run_start_step, 1)
+                    sps = done_steps / elapsed
+                    # global_batch_size is already total-across-ranks per
+                    # forward; per-optimizer-step effective batch = the above
+                    # * grad_accum.
+                    effective_batch = (
+                        global_batch_size * int(cfg.gradient_accumulation_steps)
+                    )
+                    samples_per_sec = sps * effective_batch
+                    remaining = max(total_train_steps - global_step, 0)
+                    eta_seconds = remaining / max(sps, 1e-9)
+                    eta_str = _format_eta_seconds(eta_seconds)
+                    mem_alloc_gb, mem_reserved_gb = _gpu_memory_gb()
 
                     if accelerator.is_main_process:
                         detail = " ".join(
                             f"{k}={v:.4f}" for k, v in sorted(global_loss_dict.items())
                         )
                         logger.info(
-                            "[train] step=%d/%d loss=%.4f %s "
-                            "lr=%.2e speed=%.2f step/s grad_norm=%.3f",
+                            "[train] step=%d/%d loss=%.4f ema=%.4f %s "
+                            "lr=%.2e %.2fstep/s %.1fsample/s grad_norm=%.3f "
+                            "mem=%.1f/%.1fGB eta=%s",
                             global_step,
                             total_train_steps,
                             global_loss,
+                            loss_ema,
                             detail,
                             current_lr,
                             sps,
+                            samples_per_sec,
                             float(grad_norm),
+                            mem_alloc_gb,
+                            mem_reserved_gb,
+                            eta_str,
                         )
                         _wandb_log(
                             {
                                 "train/loss": global_loss,
+                                "train/loss_ema": loss_ema,
                                 "train/lr": current_lr,
                                 "train/grad_norm": float(grad_norm),
                                 "performance/steps_per_sec": sps,
+                                "performance/samples_per_sec": samples_per_sec,
+                                "performance/mem_alloc_gb": mem_alloc_gb,
+                                "performance/mem_reserved_gb": mem_reserved_gb,
+                                "performance/progress": global_step / max(total_train_steps, 1),
                                 **{f"train/{k}": v for k, v in global_loss_dict.items()},
+                            },
+                            step=global_step,
+                        )
+
+                # --- periodic OOD validation loss ---
+                if (
+                    val_loader is not None
+                    and eval_every > 0
+                    and global_step % eval_every == 0
+                ):
+                    unwrapped = accelerator.unwrap_model(model)
+                    eval_metrics = _run_validation(
+                        unwrapped_model=unwrapped,
+                        val_iter=val_iter,
+                        val_loader=val_loader,
+                        accelerator=accelerator,
+                        iters_per_rank=eval_iters_per_rank,
+                        mini_batch_size=mini_batch_size,
+                    )
+                    if accelerator.is_main_process:
+                        logger.info(
+                            "[eval ] step=%d val_loss=%.4f (n=%d)",
+                            global_step,
+                            eval_metrics["val_loss"],
+                            eval_metrics["samples"],
+                        )
+                        _wandb_log(
+                            {
+                                "eval/val_loss": eval_metrics["val_loss"],
+                                "eval/samples": eval_metrics["samples"],
                             },
                             step=global_step,
                         )

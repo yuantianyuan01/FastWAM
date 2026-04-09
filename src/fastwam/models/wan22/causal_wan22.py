@@ -294,6 +294,72 @@ class CausalWan22Core(Wan22Core):
             "action": None,
         }
 
+    def infer(
+        self,
+        prompt: Optional[str] = None,
+        input_image: Optional[torch.Tensor] = None,
+        num_frames: int = 1,
+        *,
+        context: Optional[torch.Tensor] = None,
+        context_mask: Optional[torch.Tensor] = None,
+        num_inference_steps: int = 20,
+        sigma_shift: Optional[float] = None,
+        seed: Optional[int] = None,
+        rand_device: str = "cpu",
+        tiled: bool = False,
+        **kwargs,
+    ):
+        """Inference with cached text-context support.
+
+        When the dataset already provides pre-computed text embeddings
+        (``sample['context']`` / ``sample['context_mask']``) there is no
+        reason to spin up the T5 text encoder just to re-encode the prompt
+        — and in our CausalWan22 pretraining setup the encoder isn't even
+        loaded in the debug config. If ``context`` / ``context_mask`` are
+        supplied, we monkey-patch ``self.encode_prompt`` for the duration
+        of the parent ``infer`` call so it returns the cached tensors.
+        ``text_cfg_scale`` is forced to 1.0 in that path because we have
+        no cached negative-prompt embedding.
+        """
+        if context is None or context_mask is None:
+            return super().infer(
+                prompt=prompt,
+                input_image=input_image,
+                num_frames=num_frames,
+                num_inference_steps=num_inference_steps,
+                sigma_shift=sigma_shift,
+                seed=seed,
+                rand_device=rand_device,
+                tiled=tiled,
+                **kwargs,
+            )
+
+        # Normalize cached context to 2D/1D as encode_prompt returns them.
+        ctx = context.to(device=self.device, dtype=self.torch_dtype)
+        mask = context_mask.to(device=self.device)
+        if ctx.ndim == 3:
+            ctx = ctx[0]
+        if mask.ndim == 2:
+            mask = mask[0]
+
+        original_encode_prompt = self.encode_prompt
+        self.encode_prompt = lambda _prompt: (ctx.unsqueeze(0), mask.unsqueeze(0))
+        try:
+            return super().infer(
+                prompt="",  # ignored — patched encode_prompt returns cached tensors
+                input_image=input_image,
+                num_frames=num_frames,
+                num_inference_steps=num_inference_steps,
+                text_cfg_scale=1.0,  # no negative embedding available
+                sigma_shift=sigma_shift,
+                seed=seed,
+                rand_device=rand_device,
+                tiled=tiled,
+                **kwargs,
+            )
+        finally:
+            self.encode_prompt = original_encode_prompt
+
     def _sample_cond_timestep(
         self, batch_size: int, device: torch.device, dtype: torch.dtype,
     ) -> torch.Tensor:

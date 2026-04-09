@@ -8,6 +8,7 @@
 + [x] support causal training
 + [ ] support droid video dataset
 + [ ] causal forcing for multiple frames generation
++ [ ] make sure shuffle is working
 
 
 ### Run pretraining
@@ -23,8 +24,7 @@ common invocation:
 ```bash
 bash scripts/train_causal_wan22.sh 8 task=causal_wan22_pretrain
 
-bash scripts/train_causal_wan22.sh 8 task=causal_wan22_pretrain \
-wandb.enabled=true wandb.project=fast-wam wandb.workspace=gaochenxiao
+bash scripts/train_causal_wan22.sh 8 task=causal_wan22_pretrain wandb.enabled=true wandb.project=fast-wam wandb.workspace=gaochenxiao
 
 bash scripts/train_causal_wan22.sh 8 task=causal_wan22_pretrain \
 resume=./runs/causal_wan22_pretrain/RUN_ID/checkpoints/state/step_00010000
