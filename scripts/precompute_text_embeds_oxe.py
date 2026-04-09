@@ -6,7 +6,7 @@ from OXE RLDS datasets instead of `{dataset_dir}/meta/tasks.jsonl`.
 Usage (single GPU):
 
     python scripts/precompute_text_embeds_oxe.py \
-        --dataset_dirs /scratch/cgao304/dev/datasets/ \
+        --dataset_dirs ./data/datasets/ \
         --data_mix debug_bridge \
         --text_embedding_cache_dir /path/to/cache_dir
 
@@ -14,7 +14,7 @@ Usage (multi-GPU via torchrun):
 
     torchrun --standalone --nproc_per_node=8 \
         scripts/precompute_text_embeds_oxe.py \
-            --dataset_dirs /scratch/cgao304/dev/datasets/ \
+            --dataset_dirs ./data/datasets/ \
             --data_mix debug_bridge \
             --text_embedding_cache_dir /path/to/cache_dir
 """

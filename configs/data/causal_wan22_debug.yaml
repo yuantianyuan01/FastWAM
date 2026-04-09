@@ -1,6 +1,6 @@
 train:
   _target_: fastwam.datasets.oxe.oxe_robot_video_dataset.OXERobotVideoDataset
-  dataset_dirs: /scratch/cgao304/dev/datasets
+  dataset_dirs: ./data/datasets
   data_mix: droid
   num_frames: 5
   frame_size: [224, 224]
@@ -19,7 +19,7 @@ train:
 
 val:
   _target_: fastwam.datasets.oxe.oxe_robot_video_dataset.OXERobotVideoDataset
-  dataset_dirs: /scratch/cgao304/dev/datasets
+  dataset_dirs: ./data/datasets
   data_mix: bridge
   num_frames: 5
   frame_size: [224, 224]

@@ -15,7 +15,6 @@ timesteps drawn uniformly from [cond_t_min, cond_t_max] * num_train_timesteps.
 This makes the model robust to imperfect conditioning during autoregressive
 inference where previous predictions (not GT) are used as context.
 
-Reference: /scratch/cgao304/dev/lingbot-va/wan_va/modules/model.py
 """
 
 import torch
