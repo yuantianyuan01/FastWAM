@@ -1,0 +1,23 @@
+# @package _global_
+
+defaults:
+  - override /data: causal_wan22_debug
+  - override /model: causal_wan22_debug
+  - _self_
+
+# dataloading — kept tiny for fast iteration
+batch_size: 1
+num_workers: 0
+
+# scheduler — short, step-based debug run
+lr_scheduler_type: "constant"
+learning_rate: 1e-4
+max_steps: 20
+log_every: 1
+save_every: 0   # 0 = disable checkpointing during debugging
+eval_every: 0
+
+# training
+gradient_accumulation_steps: 1
+weight_decay: 0.0
+resume: null

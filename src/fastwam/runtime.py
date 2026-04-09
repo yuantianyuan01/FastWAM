@@ -49,6 +49,8 @@ def create_wan22_model(
     infer_shift: float = 5.0,
     num_train_timesteps: int = 1000,
     redirect_common_files: bool = True,
+    skip_dit_load_from_pretrain: bool = False,
+    load_text_encoder: bool = True,
     model_dtype: torch.dtype = torch.bfloat16,
     device: str = "cuda",
 ):
@@ -70,7 +72,82 @@ def create_wan22_model(
         train_shift=float(train_shift),
         infer_shift=float(infer_shift),
         num_train_timesteps=int(num_train_timesteps),
+        skip_dit_load_from_pretrain=bool(skip_dit_load_from_pretrain),
+        load_text_encoder=bool(load_text_encoder),
     )
+
+
+def create_causal_wan22_model(
+    model_id: str,
+    tokenizer_model_id: str,
+    dit_config,
+    tokenizer_max_len: int = 512,
+    train_shift: float = 5.0,
+    infer_shift: float = 5.0,
+    num_train_timesteps: int = 1000,
+    redirect_common_files: bool = True,
+    skip_dit_load_from_pretrain: bool = False,
+    load_text_encoder: bool = True,
+    noisy_cond_prob: float = 0.5,
+    cond_t_min: float = 0.5,
+    cond_t_max: float = 1.0,
+    model_dtype: torch.dtype = torch.bfloat16,
+    device: str = "cuda",
+):
+    """Create a CausalWan22Core model with teacher-forcing training."""
+    from .models.wan22.causal_wan22 import CausalWan22Core, CausalWanVideoDiT
+    from .models.wan22.helpers.loader import load_wan22_ti2v_5b_components, _validate_dit_config
+
+    if isinstance(dit_config, DictConfig):
+        dit_config = OmegaConf.to_container(dit_config, resolve=True)
+    if not isinstance(dit_config, dict):
+        raise ValueError(f"`dit_config` must resolve to a dict, got {type(dit_config)}")
+
+    validated_dit_config = _validate_dit_config(dit_config)
+
+    # Load all components (VAE, text encoder, tokenizer, and a WanVideoDiT)
+    components = load_wan22_ti2v_5b_components(
+        device=device,
+        torch_dtype=model_dtype,
+        model_id=model_id,
+        tokenizer_model_id=tokenizer_model_id,
+        tokenizer_max_len=int(tokenizer_max_len),
+        redirect_common_files=bool(redirect_common_files),
+        dit_config=dit_config,
+        skip_dit_load_from_pretrain=bool(skip_dit_load_from_pretrain),
+        load_text_encoder=bool(load_text_encoder),
+    )
+
+    # Upgrade the loaded WanVideoDiT to CausalWanVideoDiT (same architecture,
+    # just adds forward_teacher_forcing method)
+    if not isinstance(components.dit, CausalWanVideoDiT):
+        causal_dit = CausalWanVideoDiT(**validated_dit_config)
+        causal_dit.load_state_dict(components.dit.state_dict(), strict=True)
+        causal_dit = causal_dit.to(device=device, dtype=model_dtype)
+    else:
+        causal_dit = components.dit
+
+    model = CausalWan22Core(
+        dit=causal_dit,
+        vae=components.vae,
+        text_encoder=components.text_encoder,
+        tokenizer=components.tokenizer,
+        device=device,
+        torch_dtype=model_dtype,
+        train_shift=float(train_shift),
+        infer_shift=float(infer_shift),
+        num_train_timesteps=int(num_train_timesteps),
+        noisy_cond_prob=float(noisy_cond_prob),
+        cond_t_min=float(cond_t_min),
+        cond_t_max=float(cond_t_max),
+    )
+    model.model_paths = {
+        "dit": components.dit_path,
+        "vae": components.vae_path,
+        "text_encoder": components.text_encoder_path,
+        "tokenizer": components.tokenizer_path,
+    }
+    return model
 
 
 def create_fastwam(

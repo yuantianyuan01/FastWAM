@@ -1,0 +1,33 @@
+# @package _global_
+
+defaults:
+  - override /data: causal_wan22_pretrain
+  - override /model: causal_wan22_pretrain
+  - _self_
+
+# dataloading
+batch_size: 16
+# Must be 0: OXERobotVideoDataset builds a tf.data graph in __init__, and
+# tf.data Datasets are not pickle/fork-safe for PyTorch DataLoader workers.
+# tf.data already uses its own internal threads (traj_read_threads,
+# traj_transform_threads, num_parallel_calls) for parallel decode.
+num_workers: 0
+
+# scheduler — step-based: max_steps is the lr horizon and the loop cap.
+lr_scheduler_type: "cosine"
+learning_rate: 1e-4
+max_steps: 200000
+log_every: 10
+# save_every is in optimizer steps. 0 disables checkpointing entirely.
+save_every: 2000
+eval_every: 0  # eval disabled: OXE val path is not wired up
+
+# training
+gradient_accumulation_steps: 1
+weight_decay: 1e-2
+# Resume from a checkpoint directory under
+# `<output_dir>/checkpoints/state/step_XXXXXXXX/`. The loop continues from
+# the next optimizer step; the tf.data stream is re-seeded with the same
+# rank seed and effectively replays from the start of the random stream
+# (acceptable because the underlying sampler is approximately IID).
+resume: null

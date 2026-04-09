@@ -55,6 +55,8 @@ class Wan22Core(torch.nn.Module):
         train_shift: float = 5.0,
         infer_shift: float = 5.0,
         num_train_timesteps: int = 1000,
+        skip_dit_load_from_pretrain: bool = False,
+        load_text_encoder: bool = True,
     ):
         if dit_config is None:
             raise ValueError("`dit_config` is required for Wan22Core.from_wan22_pretrained().")
@@ -66,6 +68,8 @@ class Wan22Core(torch.nn.Module):
             tokenizer_max_len=tokenizer_max_len,
             redirect_common_files=redirect_common_files,
             dit_config=dit_config,
+            skip_dit_load_from_pretrain=skip_dit_load_from_pretrain,
+            load_text_encoder=load_text_encoder,
         )
         model = cls(
             dit=components.dit,
@@ -89,7 +93,8 @@ class Wan22Core(torch.nn.Module):
     def to(self, *args, **kwargs):
         super().to(*args, **kwargs)
         self.dit.to(*args, **kwargs)
-        self.text_encoder.to(*args, **kwargs)
+        if self.text_encoder is not None:
+            self.text_encoder.to(*args, **kwargs)
         self.vae.to(*args, **kwargs)
         return self
 
@@ -200,7 +205,7 @@ class Wan22Core(torch.nn.Module):
             fuse_flag = True
         context, context_mask = self.encode_prompt(prompt_list)
 
-        action = None
+        action = None # CHECK: for Wan22, action should not be present in the dataset
         if "action" in sample:
             action = sample["action"]
             if not isinstance(action, torch.Tensor):

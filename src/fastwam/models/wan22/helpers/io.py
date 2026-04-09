@@ -35,7 +35,7 @@ class ModelConfig:
         if self.download_source is not None:
             return self.download_source
         env = os.environ.get("DIFFSYNTH_DOWNLOAD_SOURCE")
-        return env if env is not None else "modelscope"
+        return env if env is not None else "huggingface"
 
     def parse_skip_download(self):
         if self.skip_download is not None:

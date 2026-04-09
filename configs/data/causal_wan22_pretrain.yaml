@@ -1,0 +1,36 @@
+train:
+  _target_: fastwam.datasets.oxe.oxe_robot_video_dataset.OXERobotVideoDataset
+  dataset_dirs: /scratch/cgao304/dev/datasets
+  data_mix: bridge
+  num_frames: 33
+  frame_size: [224, 224]
+  video_size: [224, 448]
+  shuffle_buffer_size: 4096
+  image_aug: true
+  text_embedding_cache_dir: "./data/cache/bridge"
+  no_prefix_padding: true
+  context_len: 128
+  is_training_set: true
+  action_video_freq_ratio: 4
+  concat_multi_camera: "horizontal"
+  override_instruction: null
+
+val:
+  _target_: fastwam.datasets.oxe.oxe_robot_video_dataset.OXERobotVideoDataset
+  dataset_dirs: /scratch/cgao304/dev/datasets
+  data_mix: bridge
+  num_frames: 33
+  frame_size: [224, 224]
+  video_size: [224, 448]
+  # NOTE: when is_training_set=false, make_interleaved_dataset does
+  # `dataset.take(shuffle_buffer_size).cache()`, so this value acts as the
+  # effective validation set size (in frames), not just a shuffle buffer.
+  shuffle_buffer_size: 4096
+  image_aug: false
+  text_embedding_cache_dir: "./data/cache/bridge"
+  no_prefix_padding: true
+  context_len: 128
+  is_training_set: false
+  action_video_freq_ratio: 4
+  concat_multi_camera: "horizontal"
+  override_instruction: null
