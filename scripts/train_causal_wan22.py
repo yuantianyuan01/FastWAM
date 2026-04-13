@@ -281,14 +281,16 @@ def _init_wandb(cfg: DictConfig, accelerator: Accelerator, output_dir: str):
         return None
     import wandb
 
-    return wandb.init(
+    run = wandb.init(
         entity=cfg.wandb.workspace,
         project=cfg.wandb.project,
         name=cfg.wandb.name,
         group=None if cfg.wandb.group in (None, "null", "") else str(cfg.wandb.group),
         mode=cfg.wandb.mode,
         dir=output_dir,
+        config=OmegaConf.to_container(cfg, resolve=True),
     )
+    return run
 
 
 # ---------------------------------------------------------------------------
