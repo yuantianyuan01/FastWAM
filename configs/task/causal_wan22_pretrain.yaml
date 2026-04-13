@@ -21,7 +21,7 @@ num_workers: 0
 # scheduler — step-based: max_steps is the lr horizon and the loop cap.
 lr_scheduler_type: "cosine"
 learning_rate: 1e-4
-max_steps: 10000
+max_steps: 50000
 log_every: 10
 # save_every is in optimizer steps. 0 disables checkpointing entirely.
 save_every: 2000
