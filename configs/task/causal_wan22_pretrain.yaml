@@ -5,6 +5,8 @@ defaults:
   - override /model: causal_wan22_pretrain
   - _self_
 
+name: default
+
 # dataloading
 # batch_size is the GLOBAL batch per forward (summed across all ranks).
 # The training script computes mini_batch = batch_size / num_processes and
