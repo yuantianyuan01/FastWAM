@@ -5,7 +5,7 @@ train:
   num_frames: 33
   frame_size: [224, 224]
   video_size: [224, 448]
-  shuffle_buffer_size: 4096
+  shuffle_buffer_size: 2048
   image_aug: true
   load_camera_views: ["primary", "wrist"]
   text_embedding_cache_dir: "./data/cache/droid"
@@ -26,7 +26,7 @@ val:
   # NOTE: when is_training_set=false, make_interleaved_dataset does
   # `dataset.take(shuffle_buffer_size).cache()`, so this value acts as the
   # effective validation set size (in frames), not just a shuffle buffer.
-  shuffle_buffer_size: 4096
+  shuffle_buffer_size: 512
   image_aug: false
   load_camera_views: ["primary", "secondary"]
   text_embedding_cache_dir: "./data/cache/bridge"

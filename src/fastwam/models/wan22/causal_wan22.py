@@ -76,7 +76,91 @@ class CausalWanVideoDiT(WanVideoDiT):
     The regular ``forward()`` is unchanged and used for inference.
     ``forward_teacher_forcing()`` doubles the sequence into conditioning +
     noisy tokens and applies the teacher-forcing attention mask.
+    ``forward_with_per_frame_timesteps()`` supports per-frame timestep
+    control for autoregressive generation.
     """
+
+    def forward_with_per_frame_timesteps(
+        self,
+        latents: torch.Tensor,              # [B, C, F, H, W]
+        per_frame_timesteps: torch.Tensor,   # [B, F]
+        context: torch.Tensor,              # [B, L, D]
+        context_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """DiT forward with per-frame timestep control.
+
+        For autoregressive inference: build ``[clean_0, ..., clean_{k-1},
+        noisy_k]`` and use the ``per_frame_causal`` attention mask so that
+        frame k only attends to frames 0..k.  Clean conditioning frames get
+        timestep 0; the target frame gets the denoising timestep.
+
+        Args:
+            latents: Video latents ``[B, C, F, H, W]``.
+            per_frame_timesteps: Per-frame timestep values ``[B, F]``.
+            context: Text embeddings ``[B, L, D]``.
+            context_mask: Boolean mask ``[B, L]`` for text tokens.
+
+        Returns:
+            Model prediction ``[B, C, F, H, W]``.
+        """
+        dummy_t = torch.zeros(
+            latents.shape[0], dtype=latents.dtype, device=latents.device,
+        )
+        latents, _, context_mask = self._validate_forward_inputs(
+            x=latents, timestep=dummy_t, context=context,
+            context_mask=context_mask, action=None,
+        )
+
+        batch_size = latents.shape[0]
+        patch_h = int(self.patch_size[1])
+        patch_w = int(self.patch_size[2])
+        tokens_per_frame = (latents.shape[3] // patch_h) * (latents.shape[4] // patch_w)
+
+        x = self.patchify(latents)
+        f, h, w = x.shape[2:]
+        seq_len = f * h * w
+
+        x_tokens = rearrange(x, "b c f h w -> b (f h w) c").contiguous()
+
+        # Per-token timestep embeddings: broadcast [B, F] -> [B, F*tokens]
+        token_timesteps = (
+            per_frame_timesteps
+            .unsqueeze(-1)
+            .expand(batch_size, f, tokens_per_frame)
+            .contiguous()
+            .reshape(batch_size, -1)
+        )
+        token_t_emb = sinusoidal_embedding_1d(self.freq_dim, token_timesteps.reshape(-1))
+        t = self.time_embedding(token_t_emb).reshape(batch_size, -1, self.hidden_dim)
+        t_mod = self.time_projection(t).unflatten(2, (6, self.hidden_dim))
+
+        context = self.text_embedding(context)
+        context_mask = context_mask.unsqueeze(1).expand(-1, seq_len, -1)
+
+        freqs = torch.cat(
+            [
+                self.freqs[0][:f].view(f, 1, 1, -1).expand(f, h, w, -1),
+                self.freqs[1][:h].view(1, h, 1, -1).expand(f, h, w, -1),
+                self.freqs[2][:w].view(1, 1, w, -1).expand(f, h, w, -1),
+            ],
+            dim=-1,
+        ).reshape(seq_len, 1, -1).to(x_tokens.device)
+
+        self_attn_mask = self.build_video_to_video_mask(
+            video_seq_len=seq_len,
+            video_tokens_per_frame=tokens_per_frame,
+            device=x_tokens.device,
+        )
+
+        for block in self.blocks:
+            x_tokens = block(
+                x_tokens, context, t_mod, freqs,
+                context_mask=context_mask,
+                self_attn_mask=self_attn_mask,
+            )
+
+        x_out = self.head(x_tokens, t)
+        return self.unpatchify(x_out, (f, h, w))
 
     def forward_teacher_forcing(
         self,
@@ -293,71 +377,136 @@ class CausalWan22Core(Wan22Core):
             "action": None,
         }
 
+    @torch.no_grad()
     def infer(
         self,
-        prompt: Optional[str] = None,
-        input_image: Optional[torch.Tensor] = None,
-        num_frames: int = 1,
+        input_image: torch.Tensor,
+        num_frames: int,
         *,
+        prompt: Optional[str] = None,
         context: Optional[torch.Tensor] = None,
         context_mask: Optional[torch.Tensor] = None,
         num_inference_steps: int = 20,
-        sigma_shift: Optional[float] = None,
         seed: Optional[int] = None,
         rand_device: str = "cpu",
         tiled: bool = False,
         **kwargs,
     ):
-        """Inference with cached text-context support.
+        """Autoregressive inference, one latent frame at a time.
 
-        When the dataset already provides pre-computed text embeddings
-        (``sample['context']`` / ``sample['context_mask']``) there is no
-        reason to spin up the T5 text encoder just to re-encode the prompt
-        — and in our CausalWan22 pretraining setup the encoder isn't even
-        loaded in the debug config. If ``context`` / ``context_mask`` are
-        supplied, we monkey-patch ``self.encode_prompt`` for the duration
-        of the parent ``infer`` call so it returns the cached tensors.
-        ``text_cfg_scale`` is forced to 1.0 in that path because we have
-        no cached negative-prompt embedding.
+        For each latent frame *k* (k = 1, ..., F-1):
+
+        1. Build ``[clean_0, ..., clean_{k-1}, noisy_k]``.
+        2. Set per-frame timesteps: conditioning frames get t=0, the target
+           frame gets the denoising timestep.
+        3. Run the DiT forward with ``per_frame_causal`` attention.
+        4. Extract prediction for frame k and apply the scheduler step.
+        5. Append the denoised frame to the clean context.
+
+        Args:
+            input_image: First frame ``[1, 3, H, W]`` or ``[3, H, W]``
+                in ``[-1, 1]``.
+            num_frames: Number of **video** frames to generate (the method
+                computes the corresponding number of latent frames
+                internally via the VAE temporal factor).
+            prompt: Text prompt (used when the T5 encoder is loaded).
+            context: Pre-computed text embeddings ``[L, D]`` or
+                ``[1, L, D]``.  Mutually exclusive with ``prompt``.
+            context_mask: Boolean mask ``[L]`` or ``[1, L]``.
+            num_inference_steps: Diffusion denoising steps per latent frame.
+            seed: Random seed for reproducibility.
+            rand_device: Device for the random generator.
+            tiled: Whether to use tiled VAE encoding / decoding.
+
+        Returns:
+            Dict with key ``"video"`` containing a list of PIL Images.
         """
-        if context is None or context_mask is None:
-            return super().infer(
-                prompt=prompt,
-                input_image=input_image,
-                num_frames=num_frames,
-                num_inference_steps=num_inference_steps,
-                sigma_shift=sigma_shift,
-                seed=seed,
-                rand_device=rand_device,
-                tiled=tiled,
-                **kwargs,
+        self.eval()
+        device = self.device
+        dtype = self.torch_dtype
+
+        # --- resolve text context ---
+        if context is not None and context_mask is not None:
+            ctx = context.to(device=device, dtype=dtype)
+            cmask = context_mask.to(device=device)
+            if ctx.ndim == 2:
+                ctx = ctx.unsqueeze(0)
+            if cmask.ndim == 1:
+                cmask = cmask.unsqueeze(0)
+        elif prompt is not None:
+            ctx, cmask = self.encode_prompt(prompt)
+        else:
+            raise ValueError(
+                "Either `prompt` or (`context`, `context_mask`) must be provided."
             )
 
-        # Normalize cached context to 2D/1D as encode_prompt returns them.
-        ctx = context.to(device=self.device, dtype=self.torch_dtype)
-        mask = context_mask.to(device=self.device)
-        if ctx.ndim == 3:
-            ctx = ctx[0]
-        if mask.ndim == 2:
-            mask = mask[0]
+        # --- encode first frame ---
+        if input_image.ndim == 3:
+            input_image = input_image.unsqueeze(0)
+        input_image = input_image.to(device=device, dtype=dtype)
+        first_frame_latent = self._encode_input_image_latents_tensor(
+            input_image, tiled=tiled,
+        )  # [1, C, 1, H, W]
 
-        original_encode_prompt = self.encode_prompt
-        self.encode_prompt = lambda _prompt: (ctx.unsqueeze(0), mask.unsqueeze(0))
-        try:
-            return super().infer(
-                prompt="",  # ignored — patched encode_prompt returns cached tensors
-                input_image=input_image,
-                num_frames=num_frames,
+        latent_h = first_frame_latent.shape[3]
+        latent_w = first_frame_latent.shape[4]
+        z_dim = first_frame_latent.shape[1]
+        latent_t = (num_frames - 1) // self.vae.temporal_downsample_factor + 1
+
+        logger.info(
+            "Autoregressive generation: %d video frames -> %d latent frames "
+            "(latent shape: [%d, %d, %d])",
+            num_frames, latent_t, z_dim, latent_h, latent_w,
+        )
+
+        generated_latents = first_frame_latent  # [1, C, 1, H, W]
+
+        for k in range(1, latent_t):
+            logger.info("Generating latent frame %d / %d ...", k, latent_t - 1)
+
+            timesteps, deltas = self.infer_scheduler.build_inference_schedule(
                 num_inference_steps=num_inference_steps,
-                text_cfg_scale=1.0,  # no negative embedding available
-                sigma_shift=sigma_shift,
-                seed=seed,
-                rand_device=rand_device,
-                tiled=tiled,
-                **kwargs,
+                device=device,
+                dtype=dtype,
             )
-        finally:
-            self.encode_prompt = original_encode_prompt
+
+            generator = (
+                None if seed is None
+                else torch.Generator(device=rand_device).manual_seed(seed + k)
+            )
+            noisy_frame = torch.randn(
+                (1, z_dim, 1, latent_h, latent_w),
+                generator=generator,
+                device=rand_device,
+                dtype=torch.float32,
+            ).to(device=device, dtype=dtype)
+
+            for step_t, step_delta in zip(timesteps, deltas):
+                latent_seq = torch.cat(
+                    [generated_latents, noisy_frame], dim=2,
+                )  # [1, C, k+1, H, W]
+
+                per_frame_t = torch.zeros(1, k + 1, device=device, dtype=dtype)
+                per_frame_t[:, k] = step_t
+
+                pred = self.dit.forward_with_per_frame_timesteps(
+                    latents=latent_seq,
+                    per_frame_timesteps=per_frame_t,
+                    context=ctx,
+                    context_mask=cmask,
+                )
+
+                pred_k = pred[:, :, k : k + 1]
+                noisy_frame = self.infer_scheduler.step(
+                    pred_k, step_delta, noisy_frame,
+                )
+
+            generated_latents = torch.cat(
+                [generated_latents, noisy_frame], dim=2,
+            )
+
+        frames = self._decode_latents(generated_latents, tiled=tiled)
+        return {"video": frames}
 
     def _sample_cond_timestep(
         self, batch_size: int, device: torch.device, dtype: torch.dtype,

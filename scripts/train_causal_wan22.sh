@@ -22,41 +22,12 @@ if ! is_integer "${NUM_MACHINES}" || ! is_integer "${MACHINE_RANK}"; then
   exit 1
 fi
 
-extract_task_basename() {
-  local cfg="$1"
-  if [[ "${cfg}" == task/* ]]; then
-    local name="${cfg#task/}"
-    name="${name%.yaml}"
-    echo "${name}"
-    return 0
-  fi
-  return 1
-}
-
 TASK_BASENAME="causal_wan22_pretrain"
-for ((i = 0; i < ${#EXTRA_ARGS[@]}; i++)); do
-  arg="${EXTRA_ARGS[$i]}"
-  case "${arg}" in
-    --config-name)
-      if ((i + 1 < ${#EXTRA_ARGS[@]})); then
-        next="${EXTRA_ARGS[$((i + 1))]}"
-        if parsed="$(extract_task_basename "${next}")"; then
-          TASK_BASENAME="${parsed}"
-        fi
-      fi
-      ;;
-    --config-name=*)
-      cfg="${arg#--config-name=}"
-      if parsed="$(extract_task_basename "${cfg}")"; then
-        TASK_BASENAME="${parsed}"
-      fi
-      ;;
-    task=*)
-      cfg="${arg#task=}"
-      cfg="${cfg%.yaml}"
-      TASK_BASENAME="${cfg}"
-      ;;
-  esac
+for arg in "${EXTRA_ARGS[@]}"; do
+  if [[ "${arg}" == name=* ]]; then
+    TASK_BASENAME="${arg#name=}"
+    break
+  fi
 done
 
 if [[ -z "${RUN_ID:-}" ]]; then

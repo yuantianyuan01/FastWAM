@@ -6,14 +6,35 @@
 + [x] support context caching
 + [x] separate out a training dataset and a validation dataset
 + [x] support causal training
-+ [ ] support droid video dataset
-+ [ ] causal forcing for multiple frames generation
-+ [ ] make sure shuffle is working
++ [x] support droid video dataset
++ [ ] diffusion forcing for multiple frames generation + multi-horizon prediction
++ [x] make sure shuffle is working
+
+# note
++ support resume training
++ support teacher forcing evaluation
++ check the conformity to bidirectional wan22 in evaluation
++ check what is this
+
+```
+Building OXE train dataset (rank=0, seed=42)
+Using LIBERO constants:
+  NUM_ACTIONS_CHUNK = 8
+  ACTION_DIM = 7
+  PROPRIO_DIM = 8
+  ACTION_PROPRIO_NORMALIZATION_TYPE = bounds_q99
+If needed, manually set the correct constants in `oxe_dataset/constants.py`!
+Load dataset info from data/datasets/droid/1.0.1
+Creating a tf.data.Dataset reading 2048 files located in folders: data/datasets/droid/1.0.1.
+Constructing tf.data.Dataset droid_101 for split all, from data/datasets/droid/1.0.1
+Computing dataset statistics. This may take a bit, but should only need to happen once.
+```
+
 
 
 ### Run pretraining
 ```bash
-torch run --standalone --nproc_per_node=8 scripts/precompute_text_embeds_oxe.py \
+torchrun --standalone --nproc_per_node=8 scripts/precompute_text_embeds_oxe.py \
 --dataset_dirs /scratch/cgao304/dev/datasets/ \
 --data_mix bridge \
 --text_embedding_cache_dir ./data/cache/bridge/ \
