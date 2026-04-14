@@ -12,8 +12,6 @@
 
 # note
 + support resume training
-+ support teacher forcing evaluation
-+ check the conformity to bidirectional wan22 in evaluation
 + check what is this
 
 ```
@@ -30,6 +28,7 @@ Constructing tf.data.Dataset droid_101 for split all, from data/datasets/droid/1
 Computing dataset statistics. This may take a bit, but should only need to happen once.
 ```
 
++ Weight decay applied to norms/biases/embeddings 
 
 
 ### Run pretraining

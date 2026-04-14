@@ -465,11 +465,15 @@ def main(cfg: DictConfig):
 
     run_start = time.perf_counter()
     run_start_step = global_step
+    effective_batch = global_batch_size * int(cfg.gradient_accumulation_steps)
 
     data_iter = iter(train_loader)
     val_iter = iter(val_loader) if val_loader is not None else None
     last_saved_step = global_step  # avoid double-saving at a boundary
     loss_ema: Optional[float] = None  # smoothed training loss
+    train_model = (
+        model if hasattr(model, "training_loss") else accelerator.unwrap_model(model)
+    )
 
     # `eval_num_samples` is a **total** count across all ranks. We distribute
     # it over `num_processes * mini_batch_size` samples per eval iteration
@@ -505,11 +509,6 @@ def main(cfg: DictConfig):
             sample = next(data_iter)
 
         with accelerator.accumulate(model):
-            train_model = (
-                model
-                if hasattr(model, "training_loss")
-                else accelerator.unwrap_model(model)
-            )
             with accelerator.autocast():
                 loss, loss_dict = train_model.training_loss(sample)
             accelerator.backward(loss)
@@ -535,9 +534,7 @@ def main(cfg: DictConfig):
                     # than rank-0's local value.
                     global_loss_dict = {}
                     for k, v in loss_dict.items():
-                        metric_tensor = torch.tensor(
-                            float(v), device=loss.device, dtype=torch.float32
-                        ).reshape(1)
+                        metric_tensor = v.detach().float().reshape(1)
                         global_loss_dict[k] = float(
                             accelerator.gather(metric_tensor).mean().item()
                         )
@@ -554,9 +551,6 @@ def main(cfg: DictConfig):
                     # global_batch_size is already total-across-ranks per
                     # forward; per-optimizer-step effective batch = the above
                     # * grad_accum.
-                    effective_batch = (
-                        global_batch_size * int(cfg.gradient_accumulation_steps)
-                    )
                     samples_per_sec = sps * effective_batch
                     remaining = max(total_train_steps - global_step, 0)
                     eta_seconds = remaining / max(sps, 1e-9)

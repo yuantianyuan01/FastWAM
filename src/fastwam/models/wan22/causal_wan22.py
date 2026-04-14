@@ -17,6 +17,8 @@ inference where previous predictions (not GT) are used as context.
 
 """
 
+import functools
+
 import torch
 import torch.nn.functional as F
 from typing import Optional
@@ -28,42 +30,6 @@ from .helpers.gradient import gradient_checkpoint_forward
 from fastwam.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Attention mask
-# ---------------------------------------------------------------------------
-
-def build_teacher_forcing_self_attn_mask(
-    num_frames: int,
-    tokens_per_frame: int,
-    device: torch.device,
-) -> torch.Tensor:
-    """Build self-attention mask for teacher-forcing causal training.
-
-    Token layout::
-
-        [cond_frame_0 ... cond_frame_{F-1}  noisy_frame_0 ... noisy_frame_{F-1}]
-
-    Each block (cond / noisy) has ``N = num_frames * tokens_per_frame`` tokens.
-
-    Returns:
-        Boolean [2N, 2N] mask (True = attend).
-    """
-    N = num_frames * tokens_per_frame
-    total = 2 * N
-
-    frame_idx = torch.arange(num_frames, device=device).repeat_interleave(tokens_per_frame)
-    q_frame = frame_idx.unsqueeze(1)  # [N, 1]
-    k_frame = frame_idx.unsqueeze(0)  # [1, N]
-
-    mask = torch.zeros(total, total, dtype=torch.bool, device=device)
-    mask[:N, :N] = q_frame >= k_frame   # cond  -> cond:  causal
-    # mask[:N, N:] stays False           # cond  -> noisy: blocked
-    mask[N:, :N] = q_frame > k_frame    # noisy -> cond:  strictly causal
-    mask[N:, N:] = q_frame == k_frame   # noisy -> noisy: same frame only
-
-    return mask
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +45,36 @@ class CausalWanVideoDiT(WanVideoDiT):
     ``forward_with_per_frame_timesteps()`` supports per-frame timestep
     control for autoregressive generation.
     """
+
+    @functools.lru_cache(maxsize=16)
+    def _rope_freqs(self, f: int, h: int, w: int, device: torch.device) -> torch.Tensor:
+        return torch.cat(
+            [
+                self.freqs[0][:f].view(f, 1, 1, -1).expand(f, h, w, -1),
+                self.freqs[1][:h].view(1, h, 1, -1).expand(f, h, w, -1),
+                self.freqs[2][:w].view(1, 1, w, -1).expand(f, h, w, -1),
+            ],
+            dim=-1,
+        ).reshape(f * h * w, 1, -1).to(device)
+
+    @functools.lru_cache(maxsize=16)
+    def _tf_self_attn_mask(
+        self, num_frames: int, tokens_per_frame: int, device: torch.device,
+    ) -> torch.Tensor:
+        N = num_frames * tokens_per_frame
+        total = 2 * N
+
+        frame_idx = torch.arange(num_frames, device=device).repeat_interleave(tokens_per_frame)
+        q_frame = frame_idx.unsqueeze(1)  # [N, 1]
+        k_frame = frame_idx.unsqueeze(0)  # [1, N]
+
+        mask = torch.zeros(total, total, dtype=torch.bool, device=device)
+        mask[:N, :N] = q_frame >= k_frame   # cond  -> cond:  causal
+        # mask[:N, N:] stays False           # cond  -> noisy: blocked
+        mask[N:, :N] = q_frame > k_frame    # noisy -> cond:  strictly causal
+        mask[N:, N:] = q_frame == k_frame   # noisy -> noisy: same frame only
+
+        return mask
 
     def forward_with_per_frame_timesteps(
         self,
@@ -103,6 +99,8 @@ class CausalWanVideoDiT(WanVideoDiT):
         Returns:
             Model prediction ``[B, C, F, H, W]``.
         """
+        assert self.video_attention_mask_mode == "per_frame_causal"
+        
         dummy_t = torch.zeros(
             latents.shape[0], dtype=latents.dtype, device=latents.device,
         )
@@ -137,14 +135,7 @@ class CausalWanVideoDiT(WanVideoDiT):
         context = self.text_embedding(context)
         context_mask = context_mask.unsqueeze(1).expand(-1, seq_len, -1)
 
-        freqs = torch.cat(
-            [
-                self.freqs[0][:f].view(f, 1, 1, -1).expand(f, h, w, -1),
-                self.freqs[1][:h].view(1, h, 1, -1).expand(f, h, w, -1),
-                self.freqs[2][:w].view(1, 1, w, -1).expand(f, h, w, -1),
-            ],
-            dim=-1,
-        ).reshape(seq_len, 1, -1).to(x_tokens.device)
+        freqs = self._rope_freqs(f, h, w, x_tokens.device)
 
         self_attn_mask = self.build_video_to_video_mask(
             video_seq_len=seq_len,
@@ -254,18 +245,11 @@ class CausalWanVideoDiT(WanVideoDiT):
         context_mask = context_mask.unsqueeze(1).expand(-1, 2 * tokens_per_block, -1)
 
         # --- RoPE: identical positions for cond and noisy copies ---
-        freqs_single = torch.cat(
-            [
-                self.freqs[0][:num_frames].view(num_frames, 1, 1, -1).expand(num_frames, h, w, -1),
-                self.freqs[1][:h].view(1, h, 1, -1).expand(num_frames, h, w, -1),
-                self.freqs[2][:w].view(1, 1, w, -1).expand(num_frames, h, w, -1),
-            ],
-            dim=-1,
-        ).reshape(tokens_per_block, 1, -1).to(x_tokens.device)
-        freqs = torch.cat([freqs_single, freqs_single], dim=0)  # [2N, 1, D]
+        freqs = self._rope_freqs(num_frames, h, w, x_tokens.device)
+        freqs = torch.cat([freqs, freqs], dim=0)  # [2N, 1, D]
 
         # --- teacher-forcing self-attention mask ---
-        self_attn_mask = build_teacher_forcing_self_attn_mask(
+        self_attn_mask = self._tf_self_attn_mask(
             num_frames=num_frames,
             tokens_per_frame=tokens_per_frame,
             device=x_tokens.device,
@@ -325,6 +309,32 @@ class CausalWan22Core(Wan22Core):
         self.noisy_cond_prob = float(noisy_cond_prob)
         self.cond_t_min = float(cond_t_min)
         self.cond_t_max = float(cond_t_max)
+        # Causal training/inference requires per_frame_causal masking in the DiT;
+        # otherwise the default bidirectional mask leaks future frames into the
+        # conditioning prefix during autoregressive rollout.
+        dit_mask_mode = getattr(self.dit, "video_attention_mask_mode", None)
+        if dit_mask_mode != "per_frame_causal":
+            raise ValueError(
+                "CausalWan22Core requires dit.video_attention_mask_mode == "
+                f"'per_frame_causal', got '{dit_mask_mode}'."
+            )
+
+    def _resolve_text_context(self, prompt, context, context_mask):
+        """Return (ctx[1,L,D], cmask[1,L]) from either pre-computed tensors or a prompt."""
+        device, dtype = self.device, self.torch_dtype
+        if context is not None and context_mask is not None:
+            ctx = context.to(device=device, dtype=dtype)
+            cmask = context_mask.to(device=device)
+            if ctx.ndim == 2:
+                ctx = ctx.unsqueeze(0)
+            if cmask.ndim == 1:
+                cmask = cmask.unsqueeze(0)
+            return ctx, cmask
+        if prompt is not None:
+            return self.encode_prompt(prompt)
+        raise ValueError(
+            "Either `prompt` or (`context`, `context_mask`) must be provided."
+        )
 
     def build_inputs(self, sample, tiled: bool = False):
         """Build inputs for teacher-forcing training.
@@ -424,21 +434,7 @@ class CausalWan22Core(Wan22Core):
         self.eval()
         device = self.device
         dtype = self.torch_dtype
-
-        # --- resolve text context ---
-        if context is not None and context_mask is not None:
-            ctx = context.to(device=device, dtype=dtype)
-            cmask = context_mask.to(device=device)
-            if ctx.ndim == 2:
-                ctx = ctx.unsqueeze(0)
-            if cmask.ndim == 1:
-                cmask = cmask.unsqueeze(0)
-        elif prompt is not None:
-            ctx, cmask = self.encode_prompt(prompt)
-        else:
-            raise ValueError(
-                "Either `prompt` or (`context`, `context_mask`) must be provided."
-            )
+        ctx, cmask = self._resolve_text_context(prompt, context, context_mask)
 
         # --- encode first frame ---
         if input_image.ndim == 3:
@@ -472,7 +468,9 @@ class CausalWan22Core(Wan22Core):
 
             generator = (
                 None if seed is None
-                else torch.Generator(device=rand_device).manual_seed(seed + k)
+                else torch.Generator(device=rand_device).manual_seed(
+                    int(seed) * 1_000_003 + int(k)
+                )
             )
             noisy_frame = torch.randn(
                 (1, z_dim, 1, latent_h, latent_w),
@@ -506,6 +504,112 @@ class CausalWan22Core(Wan22Core):
             )
 
         frames = self._decode_latents(generated_latents, tiled=tiled)
+        return {"video": frames}
+
+    @torch.no_grad()
+    def infer_teacher_forcing(
+        self,
+        video: torch.Tensor,
+        *,
+        prompt: Optional[str] = None,
+        context: Optional[torch.Tensor] = None,
+        context_mask: Optional[torch.Tensor] = None,
+        num_inference_steps: int = 20,
+        seed: Optional[int] = None,
+        rand_device: str = "cpu",
+        tiled: bool = False,
+    ):
+        """Teacher-forcing inference: denoise each frame conditioned on GT prefix.
+
+        All latent frames are denoised in parallel using
+        ``forward_teacher_forcing``.  The conditioning branch holds the
+        clean GT latents throughout, so each noisy frame k is denoised
+        conditioned on the ground-truth frames 0..k-1 (strictly causal).
+        The resulting frames are independently generated and may not be
+        temporally coherent.
+
+        Args:
+            video: Ground-truth video ``[1, 3, T, H, W]`` in ``[-1, 1]``.
+            prompt: Text prompt (used when the T5 encoder is loaded).
+            context: Pre-computed text embeddings ``[L, D]`` or
+                ``[1, L, D]``.  Mutually exclusive with ``prompt``.
+            context_mask: Boolean mask ``[L]`` or ``[1, L]``.
+            num_inference_steps: Diffusion denoising steps.
+            seed: Random seed for reproducibility.
+            rand_device: Device for the random generator.
+            tiled: Whether to use tiled VAE encoding / decoding.
+
+        Returns:
+            Dict with key ``"video"`` containing a list of PIL Images.
+        """
+        self.eval()
+        device = self.device
+        dtype = self.torch_dtype
+        ctx, cmask = self._resolve_text_context(prompt, context, context_mask)
+
+        # --- encode full GT video to latents ---
+        if video.ndim == 4:
+            video = video.unsqueeze(0)
+        video = video.to(device=device, dtype=dtype)
+        gt_latents = self._encode_video_latents(video, tiled=tiled)  # [1, C, F, H, W]
+        first_frame_latents = gt_latents[:, :, 0:1]
+
+        _, z_dim, num_latent_frames, latent_h, latent_w = gt_latents.shape
+
+        logger.info(
+            "Teacher-forcing inference: %d latent frames "
+            "(latent shape: [%d, %d, %d])",
+            num_latent_frames, z_dim, latent_h, latent_w,
+        )
+
+        # --- conditioning branch: clean GT throughout ---
+        cond_latents = gt_latents
+        cond_timestep = torch.zeros(
+            1, num_latent_frames, device=device, dtype=dtype,
+        )
+
+        # --- noisy branch: start from pure noise ---
+        generator = (
+            None if seed is None
+            else torch.Generator(device=rand_device).manual_seed(seed)
+        )
+        noisy_latents = torch.randn(
+            gt_latents.shape,
+            generator=generator,
+            device=rand_device,
+            dtype=torch.float32,
+        ).to(device=device, dtype=dtype)
+        noisy_latents[:, :, 0:1] = first_frame_latents  # frame 0 always clean
+
+        # --- denoising loop (all frames in parallel) ---
+        timesteps, deltas = self.infer_scheduler.build_inference_schedule(
+            num_inference_steps=num_inference_steps,
+            device=device,
+            dtype=dtype,
+        )
+
+        for step_t, step_delta in zip(timesteps, deltas):
+            timestep_bf = torch.full(
+                (1, num_latent_frames), float(step_t),
+                device=device, dtype=dtype,
+            )
+            timestep_bf[:, 0] = 0  # frame 0 always clean
+
+            pred = self.dit.forward_teacher_forcing(
+                noisy_latents=noisy_latents,
+                cond_latents=cond_latents,
+                timestep=timestep_bf,
+                cond_timestep=cond_timestep,
+                context=ctx,
+                context_mask=cmask,
+            )
+
+            noisy_latents = self.infer_scheduler.step(
+                pred, step_delta, noisy_latents,
+            )
+            noisy_latents[:, :, 0:1] = first_frame_latents  # fix frame 0
+
+        frames = self._decode_latents(noisy_latents, tiled=tiled)
         return {"video": frames}
 
     def _sample_cond_timestep(
@@ -577,10 +681,13 @@ class CausalWan22Core(Wan22Core):
         else:
             loss_timestep = timestep
 
-        # Per-(batch, frame) MSE then per-frame flow-matching weighting.
-        loss_per_bf = F.mse_loss(pred.float(), target.float(), reduction="none").mean(dim=(1, 3, 4))
+        # Per-(batch, frame) MSE: reduce in compute dtype first, then cast
+        # the small [B, F] tensor to fp32 for the weighted mean. Avoids
+        # materializing a full [B, C, F, H, W] fp32 squared-error tensor
+        # under bf16/fp16 autocast.
+        loss_per_bf = (pred - target).pow(2).mean(dim=(1, 3, 4)).float()
         sample_weight = self.train_scheduler.training_weight(loss_timestep).to(
             loss_per_bf.device, dtype=loss_per_bf.dtype
         )
         loss_total = (loss_per_bf * sample_weight).mean()
-        return loss_total, {"loss_video": float(loss_total.detach().item())}
+        return loss_total, {"loss_video": loss_total.detach()}

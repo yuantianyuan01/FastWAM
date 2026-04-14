@@ -22,7 +22,7 @@ from pathlib import Path
 
 import hydra
 import torch
-from hydra.utils import instantiate
+from hydra.utils import get_original_cwd, instantiate
 from omegaconf import DictConfig
 from PIL import Image
 from torch.utils.data import DataLoader
@@ -63,20 +63,35 @@ def main(cfg: DictConfig):
 
     # --- eval config (merged via Hydra +eval.xxx overrides) ---
     eval_cfg = cfg.get("eval", {})
+    # Hydra changes cwd into its own output dir; resolve user-supplied paths
+    # against the original invocation cwd so CLI-relative paths work as expected.
+    orig_cwd = Path(get_original_cwd())
+
+    def _resolve(p: str) -> str:
+        path = Path(p)
+        return str(path if path.is_absolute() else (orig_cwd / path).resolve())
+
     checkpoint_path = eval_cfg.get("checkpoint_path", None)
+    if checkpoint_path in (None, "null", "None", ""):
+        checkpoint_path = None
+    else:
+        checkpoint_path = _resolve(str(checkpoint_path))
     num_samples = int(eval_cfg.get("num_samples", 4))
-    num_inference_steps = int(
-        eval_cfg.get("num_inference_steps", cfg.get("eval_num_inference_steps", 20))
-    )
-    output_dir = str(eval_cfg.get("output_dir", "./eval_outputs"))
+    num_inference_steps = int(eval_cfg.get("num_inference_steps", 20))
+    output_dir = _resolve(str(eval_cfg.get("output_dir", "./eval_outputs")))
     source = str(eval_cfg.get("source", "val"))
     seed = int(eval_cfg.get("seed", 42))
     device = str(eval_cfg.get("device", "cuda:0"))
+    mode = str(eval_cfg.get("mode", "autoregressive"))
+    if mode not in ("autoregressive", "teacher_forcing"):
+        raise ValueError(
+            f"eval.mode must be 'autoregressive' or 'teacher_forcing', got '{mode}'"
+        )
 
     ensure_dir(output_dir)
     set_global_seed(seed)
-    logger.info("Eval config: samples=%d steps=%d source=%s seed=%d device=%s",
-                num_samples, num_inference_steps, source, seed, device)
+    logger.info("Eval config: samples=%d steps=%d source=%s seed=%d device=%s mode=%s",
+                num_samples, num_inference_steps, source, seed, device, mode)
 
     # --- compute actual video frame count ---
     data_cfg = cfg.data.get(source, cfg.data.train)
@@ -94,15 +109,13 @@ def main(cfg: DictConfig):
     logger.info("Building model on %s (dtype=%s) ...", device, model_dtype)
     model = instantiate(cfg.model, model_dtype=model_dtype, device=device)
 
-    if checkpoint_path not in (None, "null", "None", ""):
-        ckpt = Path(checkpoint_path)
-        if ckpt.exists():
-            logger.info("Loading checkpoint: %s", checkpoint_path)
-            model.load_checkpoint(str(ckpt))
-        else:
-            logger.warning("Checkpoint not found, using random weights: %s", checkpoint_path)
-    else:
+    if checkpoint_path is None:
         logger.info("No checkpoint specified, using current model weights.")
+    elif Path(checkpoint_path).exists():
+        logger.info("Loading checkpoint: %s", checkpoint_path)
+        model.load_checkpoint(checkpoint_path)
+    else:
+        logger.warning("Checkpoint not found, using random weights: %s", checkpoint_path)
 
     model.eval()
 
@@ -126,44 +139,43 @@ def main(cfg: DictConfig):
             logger.warning("Dataset exhausted after %d samples.", i)
             break
 
-        video = sample["video"]       # [1, C, T, H, W]
-        context = sample["context"]   # [1, L, D]
-        context_mask = sample["context_mask"]  # [1, L]
-
-        # First frame as input image [1, C, H, W]
-        first_frame = video[0, :, 0:1].permute(1, 0, 2, 3)  # [1, C, H, W]
+        video = sample["video"]                # [1, C, T, H, W]
+        context = sample["context"][0]         # [L, D]
+        context_mask = sample["context_mask"][0]  # [L]
+        sample_seed = seed + i * 10_000
 
         logger.info(
-            "[sample %d/%d] video shape=%s, generating %d video frames ...",
-            i + 1, num_samples, list(video.shape), num_video_frames,
+            "[sample %d/%d] video shape=%s, mode=%s, generating %d video frames ...",
+            i + 1, num_samples, list(video.shape), mode, num_video_frames,
         )
 
-        # Autoregressive generation via model.infer()
-        output = model.infer(
-            input_image=first_frame,
-            num_frames=num_video_frames,
-            context=context[0],       # [L, D]
-            context_mask=context_mask[0],  # [L]
-            num_inference_steps=num_inference_steps,
-            seed=seed + i,
-        )
+        if mode == "autoregressive":
+            first_frame = video[0, :, 0:1].permute(1, 0, 2, 3)  # [1, C, H, W]
+            output = model.infer(
+                input_image=first_frame,
+                num_frames=num_video_frames,
+                context=context,
+                context_mask=context_mask,
+                num_inference_steps=num_inference_steps,
+                seed=sample_seed,
+            )
+        else:  # teacher_forcing
+            output = model.infer_teacher_forcing(
+                video=video,
+                context=context,
+                context_mask=context_mask,
+                num_inference_steps=num_inference_steps,
+                seed=sample_seed,
+            )
         gen_frames = output["video"]
+        gt_frames = video_tensor_to_pil(video[0])
 
-        # Save generated video
-        gen_path = str(Path(output_dir) / f"sample_{i:04d}_gen.mp4")
-        save_mp4(gen_frames, gen_path, fps=4)
-        logger.info("  Saved generated video: %s (%d frames)", gen_path, len(gen_frames))
-
-        # Save ground truth video
-        gt_frames = video_tensor_to_pil(video[0])  # [C, T, H, W]
-        gt_path = str(Path(output_dir) / f"sample_{i:04d}_gt.mp4")
-        save_mp4(gt_frames, gt_path, fps=4)
-        logger.info("  Saved ground truth video: %s (%d frames)", gt_path, len(gt_frames))
-
-        # Save first frame as PNG
-        first_frame_pil = gt_frames[0]
-        png_path = str(Path(output_dir) / f"sample_{i:04d}_first_frame.png")
-        first_frame_pil.save(png_path)
+        out_prefix = Path(output_dir) / f"sample_{i:04d}"
+        save_mp4(gen_frames, str(out_prefix) + "_gen.mp4", fps=4)
+        save_mp4(gt_frames, str(out_prefix) + "_gt.mp4", fps=4)
+        gt_frames[0].save(str(out_prefix) + "_first_frame.png")
+        logger.info("  Saved sample %d (gen=%d frames, gt=%d frames) to %s_*",
+                    i, len(gen_frames), len(gt_frames), out_prefix)
 
     logger.info("Evaluation complete. Outputs saved to %s", output_dir)
 
