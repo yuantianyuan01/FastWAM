@@ -25,7 +25,11 @@ from typing import Optional
 from einops import rearrange
 
 from .wan22 import Wan22Core
-from .wan_video_dit import WanVideoDiT, sinusoidal_embedding_1d
+from .wan_video_dit import (
+    WanVideoDiT,
+    sinusoidal_embedding_1d,
+    create_block_mask,
+)
 from .helpers.gradient import gradient_checkpoint_forward
 from fastwam.utils.logging_config import get_logger
 
@@ -44,7 +48,16 @@ class CausalWanVideoDiT(WanVideoDiT):
     noisy tokens and applies the teacher-forcing attention mask.
     ``forward_with_per_frame_timesteps()`` supports per-frame timestep
     control for autoregressive generation.
+
+    Args:
+        use_flex_attention: If True (default), self-attention in the causal
+            forward paths uses ``flex_attention`` with a block-sparse mask.
+            If False, falls back to SDPA with the equivalent dense mask.
     """
+
+    def __init__(self, *args, use_flex_attention: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.use_flex_attention = bool(use_flex_attention)
 
     @functools.lru_cache(maxsize=16)
     def _rope_freqs(self, f: int, h: int, w: int, device: torch.device) -> torch.Tensor:
@@ -57,10 +70,13 @@ class CausalWanVideoDiT(WanVideoDiT):
             dim=-1,
         ).reshape(f * h * w, 1, -1).to(device)
 
+    # ------- dense self-attention masks (for SDPA fallback paths) ----------
+
     @functools.lru_cache(maxsize=16)
     def _tf_self_attn_mask(
         self, num_frames: int, tokens_per_frame: int, device: torch.device,
     ) -> torch.Tensor:
+        """Dense ``[2N, 2N]`` teacher-forcing self-attention mask."""
         N = num_frames * tokens_per_frame
         total = 2 * N
 
@@ -75,6 +91,61 @@ class CausalWanVideoDiT(WanVideoDiT):
         mask[N:, N:] = q_frame == k_frame   # noisy -> noisy: same frame only
 
         return mask
+
+    @functools.lru_cache(maxsize=16)
+    def _per_frame_causal_self_attn_mask(
+        self, num_frames: int, tokens_per_frame: int, device: torch.device,
+    ) -> torch.Tensor:
+        """Dense ``[N, N]`` per-frame-causal self-attention mask.
+
+        Cached wrapper around ``build_video_to_video_mask`` (inherited from
+        ``WanVideoDiT``), kept for naming symmetry with the block-mask
+        helpers below.
+        """
+        return self.build_video_to_video_mask(
+            video_seq_len=num_frames * tokens_per_frame,
+            video_tokens_per_frame=tokens_per_frame,
+            device=device,
+        )
+
+    # ------- flex_attention block masks (fast self-attention path) ---------
+
+    @functools.lru_cache(maxsize=16)
+    def _tf_block_mask(
+        self, num_frames: int, tokens_per_frame: int, device: torch.device,
+    ):
+        """flex_attention BlockMask for the ``[2N, 2N]`` teacher-forcing layout."""
+        N = num_frames * tokens_per_frame
+        TPF = tokens_per_frame
+
+        def mask_mod(b, h, q_idx, kv_idx):
+            q_half = q_idx // N               # 0 = cond, 1 = noisy
+            k_half = kv_idx // N
+            q_frame = (q_idx % N) // TPF
+            k_frame = (kv_idx % N) // TPF
+            cond_cond = (q_half == 0) & (k_half == 0) & (q_frame >= k_frame)
+            noisy_cond = (q_half == 1) & (k_half == 0) & (q_frame > k_frame)
+            noisy_noisy = (q_half == 1) & (k_half == 1) & (q_frame == k_frame)
+            return cond_cond | noisy_cond | noisy_noisy
+
+        return create_block_mask(
+            mask_mod, B=None, H=None, Q_LEN=2 * N, KV_LEN=2 * N, device=device,
+        )
+
+    @functools.lru_cache(maxsize=16)
+    def _per_frame_causal_block_mask(
+        self, num_frames: int, tokens_per_frame: int, device: torch.device,
+    ):
+        """flex_attention BlockMask for a per-frame-causal ``[N, N]`` self-attn."""
+        N = num_frames * tokens_per_frame
+        TPF = tokens_per_frame
+
+        def mask_mod(b, h, q_idx, kv_idx):
+            return (q_idx // TPF) >= (kv_idx // TPF)
+
+        return create_block_mask(
+            mask_mod, B=None, H=None, Q_LEN=N, KV_LEN=N, device=device,
+        )
 
     def forward_with_per_frame_timesteps(
         self,
@@ -137,17 +208,21 @@ class CausalWanVideoDiT(WanVideoDiT):
 
         freqs = self._rope_freqs(f, h, w, x_tokens.device)
 
-        self_attn_mask = self.build_video_to_video_mask(
-            video_seq_len=seq_len,
-            video_tokens_per_frame=tokens_per_frame,
-            device=x_tokens.device,
-        )
+        if self.use_flex_attention:
+            block_mask = self._per_frame_causal_block_mask(f, tokens_per_frame, x_tokens.device)
+            self_attn_mask = None
+        else:
+            block_mask = None
+            self_attn_mask = self._per_frame_causal_self_attn_mask(
+                f, tokens_per_frame, x_tokens.device,
+            )
 
         for block in self.blocks:
             x_tokens = block(
                 x_tokens, context, t_mod, freqs,
                 context_mask=context_mask,
                 self_attn_mask=self_attn_mask,
+                block_mask=block_mask,
             )
 
         x_out = self.head(x_tokens, t)
@@ -248,12 +323,21 @@ class CausalWanVideoDiT(WanVideoDiT):
         freqs = self._rope_freqs(num_frames, h, w, x_tokens.device)
         freqs = torch.cat([freqs, freqs], dim=0)  # [2N, 1, D]
 
-        # --- teacher-forcing self-attention mask ---
-        self_attn_mask = self._tf_self_attn_mask(
-            num_frames=num_frames,
-            tokens_per_frame=tokens_per_frame,
-            device=x_tokens.device,
-        )
+        # --- self-attention mask: prefer flex_attention block-sparse path ---
+        if self.use_flex_attention:
+            block_mask = self._tf_block_mask(
+                num_frames=num_frames,
+                tokens_per_frame=tokens_per_frame,
+                device=x_tokens.device,
+            )
+            self_attn_mask = None
+        else:
+            block_mask = None
+            self_attn_mask = self._tf_self_attn_mask(
+                num_frames=num_frames,
+                tokens_per_frame=tokens_per_frame,
+                device=x_tokens.device,
+            )
 
         # --- DiT blocks ---
         for block in self.blocks:
@@ -264,12 +348,14 @@ class CausalWanVideoDiT(WanVideoDiT):
                     x_tokens, context, t_mod, freqs,
                     context_mask=context_mask,
                     self_attn_mask=self_attn_mask,
+                    block_mask=block_mask,
                 )
             else:
                 x_tokens = block(
                     x_tokens, context, t_mod, freqs,
                     context_mask=context_mask,
                     self_attn_mask=self_attn_mask,
+                    block_mask=block_mask,
                 )
 
         # --- extract noisy output, apply head, unpatchify ---

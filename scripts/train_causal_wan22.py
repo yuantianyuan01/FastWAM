@@ -300,10 +300,16 @@ def _init_wandb(cfg: DictConfig, accelerator: Accelerator, output_dir: str):
 @hydra.main(config_path="../configs", config_name="train", version_base="1.3")
 def main(cfg: DictConfig):
     mixed_precision = _normalize_mixed_precision(cfg.mixed_precision)
+    from accelerate.utils import DataLoaderConfiguration
+    dataloader_config = DataLoaderConfiguration(
+        split_batches=False,
+        dispatch_batches=False,
+    )
     accelerator = Accelerator(
         gradient_accumulation_steps=int(cfg.gradient_accumulation_steps),
         mixed_precision=mixed_precision,
         step_scheduler_with_optimizer=False,
+        dataloader_config=dataloader_config,
     )
 
     setup_logging(
@@ -338,10 +344,19 @@ def main(cfg: DictConfig):
         rank=int(accelerator.process_index),
     )
 
-    if int(cfg.num_workers) != 0:
+    num_workers = int(cfg.num_workers)
+    if num_workers not in (0, 1):
         raise ValueError(
-            "`num_workers` must be 0 for OXERobotVideoDataset — tf.data graphs "
-            "are not pickle/fork-safe for DataLoader worker subprocesses."
+            "`num_workers` must be 0 or 1 for OXEPretrainDataset. 0 runs "
+            "tf.data in the main process; 1 runs it in a single forked "
+            "worker (the dataset defers tf.data construction to __iter__ so "
+            "this is fork-safe). >1 would require per-worker seed sharding."
+        )
+    loader_extra = {}
+    if num_workers > 0:
+        loader_extra = dict(
+            persistent_workers=True,
+            prefetch_factor=int(cfg.get("prefetch_factor", 4) or 4),
         )
 
     # `cfg.batch_size` is the **global** batch size summed across all ranks
@@ -370,10 +385,11 @@ def main(cfg: DictConfig):
         train_dataset,
         batch_size=mini_batch_size,
         shuffle=False,  # IterableDataset — the underlying tf.data pipeline shuffles
-        num_workers=0,
+        num_workers=num_workers,
         pin_memory=torch.cuda.is_available(),
         drop_last=True,
         collate_fn=_tensor_only_collate,
+        **loader_extra,
     )
 
     # Optional validation dataset (only built if the task actually runs eval).
@@ -391,10 +407,11 @@ def main(cfg: DictConfig):
             val_dataset,
             batch_size=mini_batch_size,
             shuffle=False,
-            num_workers=0,
+            num_workers=num_workers,
             pin_memory=torch.cuda.is_available(),
             drop_last=True,
             collate_fn=_tensor_only_collate,
+            **loader_extra,
         )
 
     # --- optimizer ---

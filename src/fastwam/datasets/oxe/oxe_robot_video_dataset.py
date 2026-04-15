@@ -1,5 +1,7 @@
 import hashlib
 import os
+import queue
+import threading
 from typing import Optional
 import time
 import numpy as np
@@ -48,6 +50,16 @@ class OXERobotVideoDataset(torch.utils.data.IterableDataset):
         override_instruction: Optional[str] = None, # whether to hardcode a specific instruction for all samples, for debugging
         seed: Optional[int] = None,
         rank: Optional[int] = None,
+        # Pipeline-tuning knobs. Defaults preserve the original behavior
+        # (per-mixture threads, no extra prefetch) because empirically adding
+        # tf prefetch / threaded python prefetch on this RLDS pipeline
+        # REGRESSED throughput on droid — tf.data already handles buffering
+        # internally and extra layers introduce contention. See
+        # scripts/bench_oxe.py.
+        traj_read_threads: Optional[int] = None,
+        traj_transform_threads: Optional[int] = None,
+        prefetch_buffer_size: int = 0,
+        python_prefetch_size: int = 0,
     ):
         # Per-rank tf.data seeding. The RLDS pipeline in oxe_utils calls
         # `.shuffle(...)` and `sample_from_datasets(...)` without explicit
@@ -104,13 +116,19 @@ class OXERobotVideoDataset(torch.utils.data.IterableDataset):
                 resize_size=resize_size_per_camera,
                 num_parallel_calls=16,
             ),
-            dataset_kwargs_list=per_dataset_kwargs, 
-            shuffle_buffer_size=shuffle_buffer_size, 
-            sample_weights=weights, 
-            balance_weights=True, 
-            traj_transform_threads=len(mixture_spec), 
-            traj_read_threads=len(mixture_spec), 
-            train=is_training_set, 
+            dataset_kwargs_list=per_dataset_kwargs,
+            shuffle_buffer_size=shuffle_buffer_size,
+            sample_weights=weights,
+            balance_weights=True,
+            traj_transform_threads=(
+                len(mixture_spec) if traj_transform_threads is None
+                else int(traj_transform_threads)
+            ),
+            traj_read_threads=(
+                len(mixture_spec) if traj_read_threads is None
+                else int(traj_read_threads)
+            ),
+            train=is_training_set,
         )
         if image_aug:
             rlds_config["frame_transform_kwargs"].update({"image_augment_kwargs" : dict(
@@ -142,12 +160,25 @@ class OXERobotVideoDataset(torch.utils.data.IterableDataset):
             args={"mean": 0.5, "std": 0.5}, 
         )
         self.dataset, self.dataset_length, self.dataset_statistics = make_interleaved_dataset(
-            **rlds_config, 
+            **rlds_config,
         )
-        
+        # Optional final prefetch. Disabled by default — upstream RLDS
+        # already runs its own buffering and adding a second prefetch stage
+        # here hurt throughput in bench_oxe. Set prefetch_buffer_size>0 if
+        # you want to experiment.
+        if int(prefetch_buffer_size) > 0:
+            self.dataset = self.dataset.prefetch(int(prefetch_buffer_size))
+
         self.text_embedding_cache_dir = text_embedding_cache_dir
         self.context_len = context_len
         self.override_instruction = override_instruction
+        self.python_prefetch_size = max(int(python_prefetch_size), 0)
+        # In-process LRU-ish cache for text embeddings — the same prompt can
+        # repeat hundreds of times across a droid-scale dataset, so avoiding
+        # `torch.load` on the hot path is a direct win. Bounded to keep peak
+        # RSS predictable.
+        self._text_embed_cache: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
+        self._text_embed_cache_limit = 4096
 
     def transform(self, rlds_traj):
         observation_image_keys = ["image_"+view for view in self.load_camera_views]
@@ -205,6 +236,9 @@ class OXERobotVideoDataset(torch.utils.data.IterableDataset):
     def _get_cached_text_context(self, prompt: str):
         if self.text_embedding_cache_dir is None:
             raise ValueError("text_embedding_cache_dir is not set.")
+        cached = self._text_embed_cache.get(prompt)
+        if cached is not None:
+            return cached
         cache_dir = self.text_embedding_cache_dir
         os.makedirs(cache_dir, exist_ok=True)
         hashed = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
@@ -234,13 +268,269 @@ class OXERobotVideoDataset(torch.utils.data.IterableDataset):
                 f"Cached mask_len mismatch: expected {self.context_len}, got {context_mask.shape[0]} in {cache_path}"
             )
 
+        # Populate the in-process cache. We intentionally do not evict
+        # selectively — once the cache fills we just stop adding new
+        # entries, which bounds RSS while still capturing the high-
+        # frequency prompts (most real datasets have <1k unique prompts).
+        if len(self._text_embed_cache) < self._text_embed_cache_limit:
+            self._text_embed_cache[prompt] = (context, context_mask)
         return context, context_mask
 
     def __len__(self):
         return self.dataset_length
 
-    def __iter__(self):
+    def _transformed_iterator(self):
         for rlds_traj in self.dataset.as_numpy_iterator():
+            yield self.transform(rlds_traj)
+
+    def __iter__(self):
+        base_iter = self._transformed_iterator()
+        if self.python_prefetch_size <= 0:
+            yield from base_iter
+            return
+
+        # Run `self.transform()` on a background thread so it overlaps with
+        # downstream GPU compute. A daemon thread terminates with the
+        # process; we use a sentinel to unblock the consumer on errors.
+        buf: queue.Queue = queue.Queue(maxsize=self.python_prefetch_size)
+        sentinel = object()
+
+        def _producer():
+            try:
+                for item in base_iter:
+                    buf.put(item)
+            except Exception as exc:  # surface to the consumer
+                buf.put(("__err__", exc))
+            finally:
+                buf.put(sentinel)
+
+        thread = threading.Thread(target=_producer, daemon=True)
+        thread.start()
+        try:
+            while True:
+                item = buf.get()
+                if item is sentinel:
+                    return
+                if isinstance(item, tuple) and len(item) == 2 and item[0] == "__err__":
+                    raise item[1]
+                yield item
+        finally:
+            # Drain the queue so the producer can exit promptly if the
+            # consumer stops early (e.g., training finishes mid-epoch).
+            while not buf.empty():
+                try:
+                    buf.get_nowait()
+                except queue.Empty:
+                    break
+
+
+from oxe_utils.rlds.oxe.materialize import make_oxe_dataset_kwargs
+from oxe_utils.rlds.dataset import make_pretrain_dataset
+                
+class OXEPretrainDataset(torch.utils.data.IterableDataset):
+    def __init__(
+        self,
+        data_dir: str,
+        data_mix: str,
+        num_frames: int,
+        frame_size: tuple[int, int],
+        load_camera_views: list[str],
+        shuffle_buffer_size: int,
+        image_aug: bool = False,
+        text_embedding_cache_dir=None,
+        context_len=128,
+        is_training_set=False,
+        action_video_freq_ratio: int = 1,
+        concat_multi_camera: str = "horizontal", # "horizontal", "vertical", "robotwin", or None
+        override_instruction: Optional[str] = None, # whether to hardcode a specific instruction for all samples, for debugging
+        seed: Optional[int] = None,
+        rank: Optional[int] = None,
+        traj_read_threads: Optional[int] = None,
+        traj_transform_threads: Optional[int] = None,
+    ):
+        resolved_seed = 42 if seed is None else int(seed)
+        if rank is None:
+            rank_env = os.environ.get("RANK", os.environ.get("LOCAL_RANK", "0"))
+            try:
+                resolved_rank = int(rank_env)
+            except ValueError:
+                resolved_rank = 0
+        else:
+            resolved_rank = int(rank)
+        self._tf_seed = resolved_seed + resolved_rank
+        self._rank = resolved_rank
+
+        # Store raw config only. The tf.data pipeline is built lazily in
+        # _build() from __iter__, so this object is safe to construct in the
+        # parent process and then iterate inside a DataLoader worker
+        # (num_workers>=1). Touching tensorflow here would poison the
+        # worker's post-fork TF runtime.
+        self.data_dir, self.data_mix = data_dir, data_mix
+        self.load_camera_views = load_camera_views
+        self.num_frames = int(num_frames)
+        frame_size = tuple(int(x) for x in frame_size)
+        self.frame_size = frame_size
+        self.resize_size_per_camera = {name: frame_size for name in self.load_camera_views}
+        self.shuffle_buffer_size = int(shuffle_buffer_size)
+        self.image_aug = bool(image_aug)
+        self.is_training_set = bool(is_training_set)
+        self.traj_read_threads = traj_read_threads
+        self.traj_transform_threads = traj_transform_threads
+        self.action_video_freq_ratio = action_video_freq_ratio
+        self.concat_multi_camera = concat_multi_camera
+        self.text_embedding_cache_dir = text_embedding_cache_dir
+        self.context_len = context_len
+        self.override_instruction = override_instruction
+
+        self.normalize_transform = Normalize(args={"mean": 0.5, "std": 0.5})
+
+        self._built = False
+        self._dataset = None
+        self._dataset_length = None
+        self._dataset_statistics = None
+
+    def _build(self) -> None:
+        """Construct the tf.data pipeline. Called lazily from __iter__ so
+        the heavy TF state lives in the caller's process (the DataLoader
+        worker if num_workers>=1, otherwise the main process)."""
+        if self._built:
+            return
+        import tensorflow as tf
+        tf.random.set_seed(self._tf_seed)
+
+        dataset_kwargs = make_oxe_dataset_kwargs(
+            self.data_mix,
+            self.data_dir,
+            load_camera_views=self.load_camera_views,
+            load_depth=False,
+            load_proprio=True,
+            load_language=True,
+            action_proprio_normalization_type=ACTION_PROPRIO_NORMALIZATION_TYPE,
+        )
+        rlds_config = dict(
+            traj_transform_kwargs=dict(
+                window_size=self.num_frames,
+                future_action_window_size=0,
+                goal_relabeling_strategy=None,
+                skip_unlabeled=True,
+            ),
+            frame_transform_kwargs=dict(
+                resize_size=self.resize_size_per_camera,
+            ),
+            dataset_kwargs=dataset_kwargs,
+            shuffle_buffer_size=self.shuffle_buffer_size,
+            traj_transform_threads=self.traj_transform_threads,
+            traj_read_threads=self.traj_read_threads,
+            train=self.is_training_set,
+        )
+        if self.image_aug:
+            rlds_config["frame_transform_kwargs"].update({"image_augment_kwargs": dict(
+                random_resized_crop=dict(scale=[0.9, 0.9], ratio=[1.0, 1.0]),
+                random_brightness=[0.2],
+                random_contrast=[0.8, 1.2],
+                random_saturation=[0.8, 1.2],
+                random_hue=[0.05],
+                augment_order=[
+                    "random_resized_crop",
+                    "random_brightness",
+                    "random_contrast",
+                    "random_saturation",
+                    "random_hue",
+                ],
+            )})
+
+        self._dataset, self._dataset_length, self._dataset_statistics = make_pretrain_dataset(
+            **rlds_config,
+        )
+        self._built = True
+
+    def transform(self, rlds_traj):
+        observation_image_keys = ["image_"+view for view in self.load_camera_views]
+        observation_proprio_key = "proprio"
+        language_key = "language_instruction"
+        
+        if len(observation_image_keys) > 1:
+            if self.concat_multi_camera == "horizontal":
+                video = torch.cat([
+                    torch.from_numpy(rlds_traj["observation"][k]) for k in observation_image_keys
+                ], dim=-2)
+            elif self.concat_multi_camera == "vertical":
+                video = torch.cat([
+                    torch.from_numpy(rlds_traj["observation"][k]) for k in observation_image_keys
+                ], dim=-3)
+        else:
+            video = rlds_traj["observation"][observation_image_keys[0]]
+        video = self.normalize_transform(video)
+        video = video.permute(3, 0, 1, 2)
+        action = rlds_traj["action"]
+        
+        proprio = rlds_traj["observation"][observation_proprio_key]
+        
+        instruction = rlds_traj["task"][language_key]
+        if isinstance(instruction, (bytes, bytearray)):
+            instruction = instruction.decode("utf-8")
+        else:
+            instruction = str(instruction)
+        instruction = instruction.strip()
+        if self.override_instruction is not None:
+            instruction = self.override_instruction
+        instruction = DEFAULT_PROMPT.format(task=instruction)
+
+        context, context_mask = self._get_cached_text_context(instruction)
+
+        context[~context_mask] = 0.0
+        context_mask = torch.ones_like(context_mask)
+
+        data = {
+            "video": video, 
+            "action": action, 
+            "proprio": proprio, 
+            "prompt": instruction, 
+            "context": context, 
+            "context_mask": context_mask, 
+        }
+        return data 
+
+    def _get_cached_text_context(self, prompt: str):
+        if self.text_embedding_cache_dir is None:
+            raise ValueError("text_embedding_cache_dir is not set.")
+        cache_dir = self.text_embedding_cache_dir
+        os.makedirs(cache_dir, exist_ok=True)
+        hashed = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        cache_path = os.path.join(cache_dir, f"{hashed}.t5_len{self.context_len}.wan22ti2v5b.pt")
+        if not os.path.exists(cache_path):
+            raise FileNotFoundError(
+                f"Missing text embedding cache: {cache_path}. "
+                "Run scripts/precompute_text_embeds.py first."
+            )
+        payload = torch.load(cache_path, map_location="cpu")
+        context = payload["context"]
+        context_mask = payload["mask"].bool()
+        if context.ndim != 2:
+            raise ValueError(
+                f"Cached `context` must be 2D [L, D], got shape {tuple(context.shape)} in {cache_path}"
+            )
+        if context_mask.ndim != 1:
+            raise ValueError(
+                f"Cached `mask` must be 1D [L], got shape {tuple(context_mask.shape)} in {cache_path}"
+            )
+        if context.shape[0] != self.context_len:
+            raise ValueError(
+                f"Cached context_len mismatch: expected {self.context_len}, got {context.shape[0]} in {cache_path}"
+            )
+        if context_mask.shape[0] != self.context_len:
+            raise ValueError(
+                f"Cached mask_len mismatch: expected {self.context_len}, got {context_mask.shape[0]} in {cache_path}"
+            )
+        return context, context_mask
+
+    def __len__(self):
+        self._build()
+        return self._dataset_length
+
+    def __iter__(self):
+        self._build()
+        for rlds_traj in self._dataset.as_numpy_iterator():
             yield self.transform(rlds_traj)
 
 

@@ -1,36 +1,35 @@
 train:
-  _target_: fastwam.datasets.oxe.oxe_robot_video_dataset.OXERobotVideoDataset
-  dataset_dirs: ./data/datasets
+  _target_: fastwam.datasets.oxe.oxe_robot_video_dataset.OXEPretrainDataset
+  data_dir: ./data/datasets
   data_mix: droid
-  num_frames: 5
+  num_frames: 33
   frame_size: [224, 224]
-  video_size: [224, 448]
-  shuffle_buffer_size: 4096
+  shuffle_buffer_size: 512
   image_aug: true
   load_camera_views: ["primary", "wrist"]
   text_embedding_cache_dir: "./data/cache/droid"
-  no_prefix_padding: true
   context_len: 128
   is_training_set: true
-  # ratio=1 so subsampled length equals num_frames (5 satisfies T % 4 == 1).
-  action_video_freq_ratio: 1
+  action_video_freq_ratio: 4
   concat_multi_camera: "horizontal"
   override_instruction: null
+  traj_read_threads: 32
+  traj_transform_threads: 32
 
 val:
-  _target_: fastwam.datasets.oxe.oxe_robot_video_dataset.OXERobotVideoDataset
-  dataset_dirs: ./data/datasets
-  data_mix: bridge
-  num_frames: 5
+  _target_: fastwam.datasets.oxe.oxe_robot_video_dataset.OXEPretrainDataset
+  data_dir: ./data/datasets
+  data_mix: bridge_orig
+  num_frames: 33
   frame_size: [224, 224]
-  video_size: [224, 448]
   shuffle_buffer_size: 128
   image_aug: false
   load_camera_views: ["primary", "secondary"]
   text_embedding_cache_dir: "./data/cache/bridge"
-  no_prefix_padding: true
   context_len: 128
   is_training_set: false
-  action_video_freq_ratio: 1
+  action_video_freq_ratio: 4
   concat_multi_camera: "horizontal"
   override_instruction: null
+  traj_read_threads: 4
+  traj_transform_threads: 4

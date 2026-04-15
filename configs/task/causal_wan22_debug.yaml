@@ -6,7 +6,7 @@ defaults:
   - _self_
 
 # dataloading — kept tiny for fast iteration
-batch_size: 1
+batch_size: 4
 num_workers: 0
 
 # scheduler — short, step-based debug run

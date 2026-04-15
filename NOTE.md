@@ -11,22 +11,6 @@
 + [x] make sure shuffle is working
 
 # note
-+ support resume training
-+ check what is this
-
-```
-Building OXE train dataset (rank=0, seed=42)
-Using LIBERO constants:
-  NUM_ACTIONS_CHUNK = 8
-  ACTION_DIM = 7
-  PROPRIO_DIM = 8
-  ACTION_PROPRIO_NORMALIZATION_TYPE = bounds_q99
-If needed, manually set the correct constants in `oxe_dataset/constants.py`!
-Load dataset info from data/datasets/droid/1.0.1
-Creating a tf.data.Dataset reading 2048 files located in folders: data/datasets/droid/1.0.1.
-Constructing tf.data.Dataset droid_101 for split all, from data/datasets/droid/1.0.1
-Computing dataset statistics. This may take a bit, but should only need to happen once.
-```
 
 + Weight decay applied to norms/biases/embeddings 
 

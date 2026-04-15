@@ -11,27 +11,27 @@ name: default
 # batch_size is the GLOBAL batch per forward (summed across all ranks).
 # The training script computes mini_batch = batch_size / num_processes and
 # uses that as each DataLoader's per-rank batch size.
-batch_size: 32
+batch_size: 16
 # Must be 0: OXERobotVideoDataset builds a tf.data graph in __init__, and
 # tf.data Datasets are not pickle/fork-safe for PyTorch DataLoader workers.
 # tf.data already uses its own internal threads (traj_read_threads,
 # traj_transform_threads, num_parallel_calls) for parallel decode.
-num_workers: 0
+num_workers: 1
 
 # scheduler — step-based: max_steps is the lr horizon and the loop cap.
 lr_scheduler_type: "cosine"
 learning_rate: 1e-4
-max_steps: 50000
+max_steps: 25000
 log_every: 10
 # save_every is in optimizer steps. 0 disables checkpointing entirely.
-save_every: 2000
+save_every: 2500
 # evaluation — every eval_every optimizer steps we pull eval_num_samples
 # total samples from cfg.data.val (bridge; OOD vs the droid training mix)
 # across all ranks and compute the teacher-forcing loss.
 # eval_num_samples is the GLOBAL count (not per-rank). The script rounds
 # up to the nearest multiple of (num_processes * mini_batch_size).
 # 0 disables eval entirely.
-eval_every: 100
+eval_every: 500
 eval_num_samples: 512
 
 # training

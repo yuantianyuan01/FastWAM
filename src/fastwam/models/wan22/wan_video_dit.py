@@ -10,17 +10,48 @@ from fastwam.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-    
-def flash_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, num_heads: int, ctx_mask: Optional[torch.Tensor] = None, compatibility_mode=True):
-    if compatibility_mode:
-        q = rearrange(q, "b s (n d) -> b n s d", n=num_heads)
-        k = rearrange(k, "b s (n d) -> b n s d", n=num_heads)
-        v = rearrange(v, "b s (n d) -> b n s d", n=num_heads)
-        x = F.scaled_dot_product_attention(q, k, v, attn_mask=ctx_mask)
-        x = rearrange(x, "b n s d -> b s (n d)", n=num_heads)
-        return x
-    else:
+# ---------------------------------------------------------------------------
+# flex_attention (block-sparse self-attention for causal / teacher-forcing
+# masks). Compiled lazily on first use.
+# ---------------------------------------------------------------------------
+from torch.nn.attention.flex_attention import (
+    flex_attention as _flex_attention_fn,
+    create_block_mask,
+)
+
+_FLEX_COMPILED = None
+
+
+def _get_flex_attention():
+    """Return a lazily-compiled flex_attention callable (cached)."""
+    global _FLEX_COMPILED
+    if _FLEX_COMPILED is None:
+        _FLEX_COMPILED = torch.compile(_flex_attention_fn, dynamic=False)
+    return _FLEX_COMPILED
+
+
+def flash_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, num_heads: int, ctx_mask: Optional[torch.Tensor] = None, block_mask=None, compatibility_mode=True):
+    """Self/cross-attention dispatch.
+
+    If ``block_mask`` is provided, routes to ``flex_attention`` (Triton block-
+    sparse kernel) which avoids materializing the full score tensor for the
+    long teacher-forcing sequence. Otherwise uses SDPA with the optional
+    dense ``ctx_mask``.
+    """
+    if not compatibility_mode:
         raise NotImplementedError("Only compatibility mode is implemented for flash attention. Please set compatibility_mode=True.")
+
+    q = rearrange(q, "b s (n d) -> b n s d", n=num_heads)
+    k = rearrange(k, "b s (n d) -> b n s d", n=num_heads)
+    v = rearrange(v, "b s (n d) -> b n s d", n=num_heads)
+
+    if block_mask is not None:
+        x = _get_flex_attention()(q, k, v, block_mask=block_mask)
+    else:
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=ctx_mask)
+
+    x = rearrange(x, "b n s d -> b s (n d)", n=num_heads)
+    return x
 
 
 
@@ -185,13 +216,16 @@ class SelfAttention(nn.Module):
         
         # self.attn = AttentionModule(self.num_heads)
 
-    def forward(self, x, freqs, self_attn_mask: Optional[torch.Tensor] = None):
+    def forward(self, x, freqs, self_attn_mask: Optional[torch.Tensor] = None, block_mask=None):
         q = self.norm_q(self.q(x))
         k = self.norm_k(self.k(x))
         v = self.v(x)
         q = rope_apply(q, freqs, self.num_heads)
         k = rope_apply(k, freqs, self.num_heads)
-        x = flash_attention(q=q, k=k, v=v, num_heads=self.num_heads, ctx_mask=self_attn_mask)
+        x = flash_attention(
+            q=q, k=k, v=v, num_heads=self.num_heads,
+            ctx_mask=self_attn_mask, block_mask=block_mask,
+        )
         return self.o(x)
 
 
@@ -246,7 +280,7 @@ class DiTBlock(nn.Module):
         self.modulation = nn.Parameter(torch.randn(1, 6, hidden_dim) / hidden_dim**0.5)
         self.gate = GateModule()
 
-    def forward(self, x, context, t_mod, freqs, context_mask=None, self_attn_mask: Optional[torch.Tensor] = None):
+    def forward(self, x, context, t_mod, freqs, context_mask=None, self_attn_mask: Optional[torch.Tensor] = None, block_mask=None):
         if context_mask is not None and context_mask.dim() == 3:
             context_mask = context_mask.unsqueeze(1) # (B, 1, seq_len, context_len), 1 for heads
         has_seq = len(t_mod.shape) == 4
@@ -261,7 +295,7 @@ class DiTBlock(nn.Module):
                 shift_mlp.squeeze(2), scale_mlp.squeeze(2), gate_mlp.squeeze(2),
             )
         input_x = modulate(self.norm1(x), shift_msa, scale_msa)
-        x = self.gate(x, gate_msa, self.self_attn(input_x, freqs, self_attn_mask=self_attn_mask))
+        x = self.gate(x, gate_msa, self.self_attn(input_x, freqs, self_attn_mask=self_attn_mask, block_mask=block_mask))
         x = x + self.cross_attn(self.norm3(x), context, ctx_mask=context_mask)
         input_x = modulate(self.norm2(x), shift_mlp, scale_mlp)
         x = self.gate(x, gate_mlp, self.ffn(input_x))
