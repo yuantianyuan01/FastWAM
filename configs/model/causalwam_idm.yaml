@@ -1,4 +1,4 @@
-_target_: fastwam.runtime.create_fastwam_idm
+_target_: fastwam.runtime.create_causalwam_idm
 model_id: Wan-AI/Wan2.2-TI2V-5B
 tokenizer_model_id: Wan-AI/Wan2.1-T2V-1.3B
 tokenizer_max_len: 128
@@ -8,6 +8,8 @@ redirect_common_files: false
 mot_checkpoint_mixed_attn: true
 action_dit_pretrained_path: checkpoints/ActionDiT_linear_interp_Wan22_alphascale_1024hdim.pt
 skip_dit_load_from_pretrain: false
+use_causal_video_dit: true
+causal_video_use_flex_attention: false
 
 video_dit_config:
   has_image_input: false
@@ -27,7 +29,7 @@ video_dit_config:
   require_vae_embedding: false
   fuse_vae_embedding_in_latents: true
   use_gradient_checkpointing: ${model.mot_checkpoint_mixed_attn}
-  video_attention_mask_mode: "first_frame_causal" # default
+  video_attention_mask_mode: "per_frame_causal" 
   action_conditioned: false
   action_dim: ${data.train.processor.action_output_dim}
   action_group_causal_mask_mode: "group_diagonal"

@@ -2,7 +2,7 @@
 
 defaults:
   - override /data: libero_2cam
-  - override /model: fastwam_idm
+  - override /model: causalwam_idm
   - _self_
 
 # dataloading

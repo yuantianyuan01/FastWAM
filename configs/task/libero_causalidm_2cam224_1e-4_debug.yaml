@@ -2,7 +2,7 @@
 
 defaults:
   - override /data: libero_2cam
-  - override /model: fastwam_idm
+  - override /model: causalwam_idm
   - _self_
 
 # dataloading
@@ -14,12 +14,12 @@ model:
 
 # scheduler
 lr_scheduler_type: "cosine"
-learning_rate: 1e-4
 num_epochs: 10
-max_steps: null
-log_every: 10
-save_every: 2000
-eval_every: 200
+max_steps: 20
+log_every: 1
+save_every: 0   # 0 = disable checkpointing during debugging
+eval_every: 1   # 
+eval_num_samples: 1
 
 # training
 gradient_accumulation_steps: 1
