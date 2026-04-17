@@ -6,8 +6,8 @@ language instruction, and generates the remaining frames autoregressively
 
 Usage::
 
-    python scripts/eval_causal_wan22.py \
-        --config-path ../runs/causal_wan22_pretrain/2026-04-11_00-53-41 \
+    python scripts/eval_causalwan22.py \
+        --config-path ../runs/causalwan22_pretrain/2026-04-11_00-53-41 \
         --config-name config \
         +eval.checkpoint_path=runs/.../step_00010000.pt \
         +eval.num_samples=8 \

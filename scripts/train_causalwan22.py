@@ -11,7 +11,7 @@ Design:
     the hard loop cap; there is no ``num_epochs`` concept because the
     underlying tf.data stream is infinite (``.repeat()`` in oxe_utils).
   * **Accelerate + DeepSpeed ZeRO1** launch path (see
-    ``scripts/train_causal_wan22.sh``). Each rank independently iterates its
+    ``scripts/train_causalwan22.sh``). Each rank independently iterates its
     own tf.data pipeline, seeded with ``cfg.seed + rank`` so different ranks
     draw different shuffle / interleave / augmentation orderings.
   * **Plain DataLoader with no sampler** — relies on the dataset's own tf.data
@@ -230,7 +230,7 @@ def _run_validation(
 ):
     """Compute the teacher-forcing training loss on a small held-out
     validation set (an OOD dataset mix in practice — see
-    ``configs/data/causal_wan22_pretrain.yaml`` which trains on droid and
+    ``configs/data/causalwan22_pretrain.yaml`` which trains on droid and
     validates on bridge).
 
     Each rank pulls ``iters_per_rank`` mini-batches (of size

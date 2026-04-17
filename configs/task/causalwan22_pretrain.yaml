@@ -1,8 +1,8 @@
 # @package _global_
 
 defaults:
-  - override /data: causal_wan22_pretrain
-  - override /model: causal_wan22_pretrain
+  - override /data: causalwan22_pretrain
+  - override /model: causalwan22_pretrain
   - _self_
 
 name: default

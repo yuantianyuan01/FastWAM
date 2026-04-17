@@ -1,24 +1,24 @@
 # @package _global_
 
 defaults:
-  - override /data: causal_wan22_debug
-  - override /model: causal_wan22_debug
+  - override /data: libero_2cam
+  - override /model: causalwam_idm_debug
   - _self_
 
 # dataloading — kept tiny for fast iteration
-batch_size: 4
+batch_size: 1
 num_workers: 0
 
 # scheduler — short, step-based debug run
 lr_scheduler_type: "constant"
 learning_rate: 1e-4
-max_steps: 20
+num_epochs: 1
+max_steps: null
 log_every: 1
 save_every: 0   # 0 = disable checkpointing during debugging
 eval_every: 0   # 0 = disable validation during debugging
-eval_num_samples: 1
 
 # training
 gradient_accumulation_steps: 1
-weight_decay: 0.0
+weight_decay: 1e-2
 resume: null

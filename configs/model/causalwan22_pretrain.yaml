@@ -1,11 +1,9 @@
-_target_: fastwam.runtime.create_causal_wan22_model
+_target_: fastwam.runtime.create_causalwan22_model
 model_id: Wan-AI/Wan2.2-TI2V-5B
 tokenizer_model_id: Wan-AI/Wan2.1-T2V-1.3B
 tokenizer_max_len: 128
 redirect_common_files: false
-# Debug: skip pretrained DiT; text encoder is not loaded — we rely on
-# pre-computed `context`/`context_mask` from the OXE dataset cache.
-skip_dit_load_from_pretrain: true
+skip_dit_load_from_pretrain: false
 load_text_encoder: false
 
 train_shift: 5.0
@@ -17,28 +15,23 @@ noisy_cond_prob: 0.5   # probability of noising conditioning latents
 cond_t_min: 0.5         # min timestep fraction for conditioning noise
 cond_t_max: 1.0         # max timestep fraction for conditioning noise
 
-# Tiny DiT for debugging — just enough parameters to exercise the training
-# loop, attention mask, and teacher-forcing code paths.
 dit_config:
   has_image_input: false
   patch_size: [1, 2, 2]
   in_dim: 48
-  # hidden_dim = num_heads * attn_head_dim. attn_head_dim must be such that
-  # (dim // 3) is even, otherwise precompute_freqs_cis_3d drops an odd
-  # element and rope_apply hits a shape mismatch. 48 works (48//3=16).
-  hidden_dim: 96
-  ffn_dim: 192
+  hidden_dim: 3072
+  ffn_dim: 14336
   freq_dim: 256
   text_dim: 4096
   out_dim: 48
-  num_heads: 2
-  attn_head_dim: 48
-  num_layers: 1
+  num_heads: 24
+  attn_head_dim: 128
+  num_layers: 30
   eps: 1.0e-06
   seperated_timestep: true
   require_clip_embedding: false
   require_vae_embedding: false
   fuse_vae_embedding_in_latents: true
-  use_gradient_checkpointing: false
+  use_gradient_checkpointing: true
   video_attention_mask_mode: "per_frame_causal"
   action_conditioned: false

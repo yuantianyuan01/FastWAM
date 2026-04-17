@@ -18,19 +18,20 @@ inference where previous predictions (not GT) are used as context.
 """
 
 import functools
+from typing import Any
 
 import torch
 import torch.nn.functional as F
 from typing import Optional
 from einops import rearrange
 
-from .wan22 import Wan22Core
-from .wan_video_dit import (
+from fastwam.models.wan22.wan22 import Wan22Core
+from fastwam.models.wan22.wan_video_dit import (
     WanVideoDiT,
     sinusoidal_embedding_1d,
     create_block_mask,
 )
-from .helpers.gradient import gradient_checkpoint_forward
+from fastwam.models.wan22.helpers.gradient import gradient_checkpoint_forward
 from fastwam.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -404,6 +405,61 @@ class CausalWan22Core(Wan22Core):
                 "CausalWan22Core requires dit.video_attention_mask_mode == "
                 f"'per_frame_causal', got '{dit_mask_mode}'."
             )
+
+    @classmethod
+    def from_causalwan22_pretrained(
+        cls,
+        device="cuda",
+        torch_dtype=torch.bfloat16,
+        model_id="Wan-AI/Wan2.2-TI2V-5B",
+        tokenizer_model_id="Wan-AI/Wan2.1-T2V-1.3B",
+        tokenizer_max_len: int = 512,
+        redirect_common_files=True,
+        dit_config: dict[str, Any] | None = None,
+        train_shift: float = 5.0,
+        infer_shift: float = 5.0,
+        num_train_timesteps: int = 1000,
+        skip_dit_load_from_pretrain: bool = False,
+        load_text_encoder: bool = True,
+        noisy_cond_prob: float = 0.5,
+        cond_t_min: float = 0.5,
+        cond_t_max: float = 1.0,
+    ):
+        if dit_config is None:
+            raise ValueError("`dit_config` is required for CausalWan22Core.from_causalwan22_pretrained().")
+        from fastwam.models.causalwan22.helpers.loader import load_causalwan22_ti2v_5b_components
+        components = load_causalwan22_ti2v_5b_components(
+            device=device,
+            torch_dtype=torch_dtype,
+            model_id=model_id,
+            tokenizer_model_id=tokenizer_model_id,
+            tokenizer_max_len=tokenizer_max_len,
+            redirect_common_files=redirect_common_files,
+            dit_config=dit_config,
+            skip_dit_load_from_pretrain=skip_dit_load_from_pretrain,
+            load_text_encoder=load_text_encoder,
+        )
+        model = cls(
+            dit=components.dit,
+            vae=components.vae,
+            text_encoder=components.text_encoder,
+            tokenizer=components.tokenizer,
+            device=device,
+            torch_dtype=torch_dtype,
+            train_shift=train_shift,
+            infer_shift=infer_shift,
+            num_train_timesteps=num_train_timesteps,
+            noisy_cond_prob=noisy_cond_prob,
+            cond_t_min=cond_t_min,
+            cond_t_max=cond_t_max,
+        )
+        model.model_paths = {
+            "dit": components.dit_path,
+            "vae": components.vae_path,
+            "text_encoder": components.text_encoder_path,
+            "tokenizer": components.tokenizer_path,
+        }
+        return model
 
     def _resolve_text_context(self, prompt, context, context_mask):
         """Return (ctx[1,L,D], cmask[1,L]) from either pre-computed tensors or a prompt."""

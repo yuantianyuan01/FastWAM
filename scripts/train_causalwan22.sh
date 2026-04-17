@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Launcher for CausalWan22 + OXE training.
-# Mirrors scripts/train_zero1.sh but targets scripts/train_causal_wan22.py,
+# Mirrors scripts/train_zero1.sh but targets scripts/train_causalwan22.py,
 # which supports the iterable OXERobotVideoDataset and step-wise resume.
 set -euo pipefail
 
-NPROC_PER_NODE="${1:?Usage: bash scripts/train_causal_wan22.sh <nproc_per_node> [hydra_overrides...]}"
+NPROC_PER_NODE="${1:?Usage: bash scripts/train_causalwan22.sh <nproc_per_node> [hydra_overrides...]}"
 shift
 
 EXTRA_ARGS=("$@")
@@ -22,7 +22,7 @@ if ! is_integer "${NUM_MACHINES}" || ! is_integer "${MACHINE_RANK}"; then
   exit 1
 fi
 
-TASK_BASENAME="causal_wan22_pretrain"
+TASK_BASENAME="causalwan22_pretrain"
 for arg in "${EXTRA_ARGS[@]}"; do
   if [[ "${arg}" == name=* ]]; then
     TASK_BASENAME="${arg#name=}"
@@ -87,7 +87,7 @@ export TF_CPP_MIN_VLOG_LEVEL=3
 accelerate launch \
   --config_file scripts/accelerate_configs/accelerate_zero1_ds.yaml \
   --num_processes "${NPROC_PER_NODE}" \
-  scripts/train_causal_wan22.py \
+  scripts/train_causalwan22.py \
   "output_dir=./runs/${TASK_BASENAME}/${RUN_ID}" \
   "wandb.name=${TASK_BASENAME}" \
   "${EXTRA_ARGS[@]}"
