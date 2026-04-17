@@ -4,7 +4,9 @@ set -euo pipefail
 NPROC_PER_NODE="${1:?Usage: bash scripts/train_zero1.sh <nproc_per_node> [hydra_overrides...]}"
 shift
 
-EXTRA_ARGS=("$@")
+RAW_ARGS=("$@")
+EXTRA_ARGS=()
+
 NUM_MACHINES="${NNODES:-1}"
 MACHINE_RANK="${NODE_RANK:-0}"
 MAIN_PROCESS_IP="${MASTER_ADDR:-127.0.0.1}"
@@ -31,12 +33,31 @@ extract_task_basename() {
 }
 
 TASK_BASENAME="train"
-for ((i = 0; i < ${#EXTRA_ARGS[@]}; i++)); do
-  arg="${EXTRA_ARGS[$i]}"
+
+# Convert short aliases to real Hydra overrides
+for ((i = 0; i < ${#RAW_ARGS[@]}; i++)); do
+  arg="${RAW_ARGS[$i]}"
+
+  case "${arg}" in
+    checkpoint_path=*)
+      EXTRA_ARGS+=("model.checkpoint_path=${arg#checkpoint_path=}")
+      ;;
+    batch_size=*)
+      EXTRA_ARGS+=("batch_size=${arg#batch_size=}")
+      ;;
+    num_workers=*)
+      EXTRA_ARGS+=("num_workers=${arg#num_workers=}")
+      ;;
+    *)
+      EXTRA_ARGS+=("${arg}")
+      ;;
+  esac
+
+  # Keep your original task name parsing
   case "${arg}" in
     --config-name)
-      if ((i + 1 < ${#EXTRA_ARGS[@]})); then
-        next="${EXTRA_ARGS[$((i + 1))]}"
+      if ((i + 1 < ${#RAW_ARGS[@]})); then
+        next="${RAW_ARGS[$((i + 1))]}"
         if parsed="$(extract_task_basename "${next}")"; then
           TASK_BASENAME="${parsed}"
         fi
@@ -75,7 +96,6 @@ if [[ -z "${RUN_ID:-}" ]]; then
 import datetime
 import os
 from datetime import timedelta
-
 import torch.distributed as dist
 
 host = os.environ["RUN_ID_SYNC_HOST"]
@@ -107,10 +127,31 @@ fi
 
 echo "[launch] nproc_per_node=${NPROC_PER_NODE} num_machines=${NUM_MACHINES} machine_rank=${MACHINE_RANK} run_id=${RUN_ID}"
 
+export WANDB_API_KEY="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"
+
+LAUNCH_ARGS=(
+  --config_file scripts/accelerate_configs/accelerate_zero1_ds.yaml
+  --num_processes "${NPROC_PER_NODE}"
+)
+
+if (( NUM_MACHINES > 1 )); then
+  LAUNCH_ARGS+=(
+    --num_machines "${NUM_MACHINES}"
+    --machine_rank "${MACHINE_RANK}"
+    --main_process_ip "${MAIN_PROCESS_IP}"
+    --main_process_port "${MAIN_PROCESS_PORT}"
+  )
+fi
+
+TRAIN_ARGS=(
+  "wandb.enabled=true"
+  "wandb.project=causalwam"
+  "wandb.name=${TASK_BASENAME}"
+  "output_dir=./runs/${TASK_BASENAME}/${RUN_ID}"
+)
+
 accelerate launch \
-  --config_file scripts/accelerate_configs/accelerate_zero1_ds.yaml \
-  --num_processes "${NPROC_PER_NODE}" \
+  "${LAUNCH_ARGS[@]}" \
   scripts/train.py \
-  "output_dir=./runs/${TASK_BASENAME}/${RUN_ID}" \
-  "wandb.name=${TASK_BASENAME}" \
+  "${TRAIN_ARGS[@]}" \
   "${EXTRA_ARGS[@]}"

@@ -422,7 +422,7 @@ def create_causalwam_idm(
     mot_checkpoint_mixed_attn: bool = True,
     redirect_common_files: bool = True,
     use_causal_video_dit: bool = True,
-    causal_video_use_flex_attention: bool = False,
+    checkpoint_path: str | None = None,
     model_dtype: torch.dtype = torch.bfloat16,
     device: str = "cuda",
 ):
@@ -496,24 +496,27 @@ def create_causalwam_idm(
         loss_lambda_action=float(loss.get("lambda_action", 1.0)),
     )
 
-    if bool(use_causal_video_dit):
-        if not isinstance(model.video_expert, CausalWanVideoDiT):
-            validated_dit_config = _validate_dit_config(video_dit_config)
-            causal_video_expert = CausalWanVideoDiT(
-                **validated_dit_config,
-                use_flex_attention=bool(causal_video_use_flex_attention),
-            )
-            causal_video_expert.load_state_dict(model.video_expert.state_dict(), strict=True)
-            causal_video_expert = causal_video_expert.to(device=device, dtype=model_dtype)
-            model.mot.mixtures["video"] = causal_video_expert
-            model.video_expert = causal_video_expert
-            logger.info(
-                "Upgraded CausalWAM video expert to CausalWanVideoDiT "
-                "(use_flex_attention=%s).",
-                bool(causal_video_use_flex_attention),
-            )
+    if bool(use_causal_video_dit) and not isinstance(model.video_expert, CausalWanVideoDiT):
+        validated_dit_config = _validate_dit_config(video_dit_config)
+        causal_video_expert = CausalWanVideoDiT(**validated_dit_config)
+        causal_video_expert.load_state_dict(model.video_expert.state_dict(), strict=True)
+
+        if checkpoint_path in (None, "", "None", "null"):
+            logger.info("No checkpoint specified for video expert, using Pretrained WanVideoDiT weights.")
+        elif (not ckpt_missing) and Path(checkpoint_path).exists():
+            logger.info("Loading checkpoint for video expert: %s", checkpoint_path)
+            causal_video_expert.load_checkpoint(checkpoint_path)
         else:
-            model.video_expert.use_flex_attention = bool(causal_video_use_flex_attention)
+            logger.warning(
+                "Checkpoint for video expert not found, using Pretrained WanVideoDiT weights: %s",
+                checkpoint_path,
+            )
+
+        causal_video_expert = causal_video_expert.to(device=device, dtype=model_dtype)
+        model.mot.mixtures["video"] = causal_video_expert
+        model.video_expert = causal_video_expert
+
+        logger.info("Upgraded CausalWAM video expert to CausalWanVideoDiT.")
 
     return model
 

@@ -9,7 +9,7 @@ mot_checkpoint_mixed_attn: true
 action_dit_pretrained_path: checkpoints/ActionDiT_linear_interp_Wan22_alphascale_1024hdim.pt
 skip_dit_load_from_pretrain: false
 use_causal_video_dit: true
-causal_video_use_flex_attention: false
+checkpoint_path: null
 
 video_dit_config:
   has_image_input: false

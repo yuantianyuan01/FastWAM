@@ -3,7 +3,6 @@ from typing import Any, Optional
 import functools
 import torch
 import torch.nn.functional as F
-from torch.nn.attention.flex_attention import create_block_mask
 
 from fastwam.utils.logging_config import get_logger
 
@@ -15,101 +14,8 @@ logger = get_logger(__name__)
 class CausalWAMIDM(FastWAMJoint):
     """IDM variant with teacher-forcing video conditioning for action denoising."""
     video_cond_noise_prob = 0.5
-    def __init__(self, *args, use_flex_attention: bool = False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.use_flex_attention = bool(use_flex_attention)
-        
-    @functools.lru_cache(maxsize=16)
-    def _tf_self_attn_mask(
-        self,
-        num_frames: int,
-        video_tokens_per_frame: int,
-        action_tokens_per_frame: int,
-        device: torch.device,
-    ) -> torch.Tensor:
-        
-        V = num_frames * video_tokens_per_frame
-        A = (num_frames - 1) * action_tokens_per_frame
-        total = 2 * V + A
-
-        mask = torch.zeros((total, total), dtype=torch.bool, device=device)
-
-        frame_idx = torch.arange(num_frames, device=device).repeat_interleave(video_tokens_per_frame)
-        q_frame = frame_idx.unsqueeze(1)  
-        k_frame = frame_idx.unsqueeze(0) 
-
-        action_idx = torch.arange(num_frames - 1, device=device).repeat_interleave(action_tokens_per_frame)
-        q_action = action_idx.unsqueeze(1)  
-        k_action = action_idx.unsqueeze(0) 
-
-        cond_start, cond_end = 0, V
-        noisy_start, noisy_end = V, 2 * V
-        action_start, action_end = 2 * V, total
-
-        # cond -> cond: causal by frame
-        mask[cond_start:cond_end, cond_start:cond_end] = (q_frame >= k_frame)
-        # noisy -> cond: strictly past frames only
-        mask[noisy_start:noisy_end, cond_start:cond_end] = (q_frame > k_frame)
-        # noisy -> noisy: same frame only
-        mask[noisy_start:noisy_end, noisy_start:noisy_end] = (q_frame == k_frame)
-        # action -> cond: action_t can see cond_t and cond_{t+1}
-        mask[action_start:action_end, cond_start:cond_end] = (
-            (q_action <= k_frame) & ((q_action + 1) >= k_frame)
-        )
-        # action -> action: same transition block only
-        mask[action_start:action_end, action_start:action_end] = (q_action == k_action)
-
-        return mask
 
     @functools.lru_cache(maxsize=16)
-    def _tf_block_mask(
-        self,
-        num_frames: int,
-        video_tokens_per_frame: int,
-        action_tokens_per_frame: int,
-        device: torch.device,
-    ):
-       
-        V = num_frames * video_tokens_per_frame
-        A = (num_frames - 1) * action_tokens_per_frame
-        total = 2 * V + A
-
-        def mask_mod(b, h, q_idx, kv_idx):
-            q_is_cond = q_idx < V
-            q_is_noisy = (q_idx >= V) & (q_idx < 2 * V)
-            q_is_action = q_idx >= 2 * V
-
-            k_is_cond = kv_idx < V
-            k_is_noisy = (kv_idx >= V) & (kv_idx < 2 * V)
-            k_is_action = kv_idx >= 2 * V
-
-            q_video_frame = (q_idx % V) // video_tokens_per_frame
-            k_video_frame = (kv_idx % V) // video_tokens_per_frame
-
-            q_action_frame = (q_idx - 2 * V) // action_tokens_per_frame
-            k_action_frame = (kv_idx - 2 * V) // action_tokens_per_frame
-
-            cond_cond = q_is_cond & k_is_cond & (q_video_frame >= k_video_frame)
-            noisy_cond = q_is_noisy & k_is_cond & (q_video_frame > k_video_frame)
-            noisy_noisy = q_is_noisy & k_is_noisy & (q_video_frame == k_video_frame)
-
-            action_cond = q_is_action & k_is_cond & (
-                (q_action_frame <= k_video_frame) & ((q_action_frame + 1) >= k_video_frame)
-            )
-
-            action_action = q_is_action & k_is_action & (q_action_frame == k_action_frame)
-
-            return cond_cond | noisy_cond | noisy_noisy | action_cond | action_action
-
-        return create_block_mask(
-            mask_mod,
-            B=None,
-            H=None,
-            Q_LEN=total,
-            KV_LEN=total,
-            device=device,
-        )
-        
     @torch.no_grad()
     def _build_teacher_forcing_attention_mask(
         self,
@@ -119,7 +25,7 @@ class CausalWAMIDM(FastWAMJoint):
         noisy_video_tokens_per_frame: int,
         cond_video_tokens_per_frame: int,
         device: torch.device,
-    ):
+    ) -> torch.Tensor:
         if noisy_video_tokens_per_frame != cond_video_tokens_per_frame:
             raise ValueError(
                 "Teacher-forcing requires identical `tokens_per_frame` for noisy and cond video branches, "
@@ -153,171 +59,48 @@ class CausalWAMIDM(FastWAMJoint):
 
         action_tokens_per_frame = action_seq_len // (num_frames - 1)
 
-        if self.use_flex_attention:
-            return self._tf_block_mask(
-                num_frames=num_frames,
-                video_tokens_per_frame=noisy_video_tokens_per_frame,
-                action_tokens_per_frame=action_tokens_per_frame,
-                device=device,
-            )
-        else:
-            return self._tf_self_attn_mask(
-                num_frames=num_frames,
-                video_tokens_per_frame=noisy_video_tokens_per_frame,
-                action_tokens_per_frame=action_tokens_per_frame,
-                device=device,
-            )
-    
-    @torch.no_grad()
-    def _causal_self_attention_mask(
-        self,
-        num_frames: int,
-        video_tokens_per_frame: int,
-        action_tokens_per_frame: int,
-        device: torch.device,
-    ):
-
-        V = num_frames * video_tokens_per_frame
+        V = num_frames * noisy_video_tokens_per_frame
         A = (num_frames - 1) * action_tokens_per_frame
-        total = V + A
+        total = 2 * V + A
 
         mask = torch.zeros((total, total), dtype=torch.bool, device=device)
 
-        frame_idx = torch.arange(num_frames, device=device).repeat_interleave(video_tokens_per_frame)
-        q_frame = frame_idx.unsqueeze(1)  
-        k_frame = frame_idx.unsqueeze(0)  
+        frame_idx = torch.arange(num_frames, device=device).repeat_interleave(noisy_video_tokens_per_frame)
+        q_frame = frame_idx.unsqueeze(1)
+        k_frame = frame_idx.unsqueeze(0)
 
         action_idx = torch.arange(num_frames - 1, device=device).repeat_interleave(action_tokens_per_frame)
-        q_action = action_idx.unsqueeze(1)  
-        k_action = action_idx.unsqueeze(0) 
+        q_action = action_idx.unsqueeze(1)
+        k_action = action_idx.unsqueeze(0)
 
-        video_start, video_end = 0, V
-        action_start, action_end = V, total
+        cond_start, cond_end = 0, V
+        noisy_start, noisy_end = V, 2 * V
+        action_start, action_end = 2 * V, total
 
-        # video -> video: causal by frame
-        mask[video_start:video_end, video_start:video_end] = (q_frame >= k_frame)
-
-        # action -> video: action_t can see video_t and video_{t+1}
-        mask[action_start:action_end, video_start:video_end] = (
+        # cond -> cond: causal by frame
+        mask[cond_start:cond_end, cond_start:cond_end] = (q_frame >= k_frame)
+        # noisy -> cond: strictly past frames only
+        mask[noisy_start:noisy_end, cond_start:cond_end] = (q_frame > k_frame)
+        # noisy -> noisy: same frame only
+        mask[noisy_start:noisy_end, noisy_start:noisy_end] = (q_frame == k_frame)
+        # action -> cond: action_t can see cond_t and cond_{t+1}
+        mask[action_start:action_end, cond_start:cond_end] = (
             (q_action <= k_frame) & ((q_action + 1) >= k_frame)
         )
-
         # action -> action: same transition block only
         mask[action_start:action_end, action_start:action_end] = (q_action == k_action)
 
         return mask
-
-    @torch.no_grad()
-    def _causal_block_mask(
-        self,
-        num_frames: int,
-        video_tokens_per_frame: int,
-        action_tokens_per_frame: int,
-        device: torch.device,
-    ):
-
-        V = num_frames * video_tokens_per_frame
-        A = (num_frames - 1) * action_tokens_per_frame
-        total = V + A
-
-        def mask_mod(b, h, q_idx, kv_idx):
-            q_is_video = q_idx < V
-            q_is_action = q_idx >= V
-
-            k_is_video = kv_idx < V
-            k_is_action = kv_idx >= V
-
-            q_video_frame = q_idx // video_tokens_per_frame
-            k_video_frame = kv_idx // video_tokens_per_frame
-
-            q_action_frame = (q_idx - V) // action_tokens_per_frame
-            k_action_frame = (kv_idx - V) // action_tokens_per_frame
-
-            video_video = q_is_video & k_is_video & (q_video_frame >= k_video_frame)
-
-            action_video = q_is_action & k_is_video & (
-                (q_action_frame <= k_video_frame) & ((q_action_frame + 1) >= k_video_frame)
-            )
-
-            action_action = q_is_action & k_is_action & (q_action_frame == k_action_frame)
-
-            return video_video | action_video | action_action
-
-        return create_block_mask(
-            mask_mod,
-            B=None,
-            H=None,
-            Q_LEN=total,
-            KV_LEN=total,
-            device=device,
-        )
-
+    
     @functools.lru_cache(maxsize=16)
-    def _causal_video_only_block_mask(
-        self,
-        num_frames: int,
-        video_tokens_per_frame: int,
-        device: torch.device,
-    ):
-        V = num_frames * video_tokens_per_frame
-
-        def mask_mod(b, h, q_idx, kv_idx):
-            q_video_frame = q_idx // video_tokens_per_frame
-            k_video_frame = kv_idx // video_tokens_per_frame
-            return q_video_frame >= k_video_frame
-
-        return create_block_mask(
-            mask_mod,
-            B=None,
-            H=None,
-            Q_LEN=V,
-            KV_LEN=V,
-            device=device,
-        )
-
-    @functools.lru_cache(maxsize=16)
-    def _causal_action_query_block_mask(
-        self,
-        num_frames: int,
-        video_tokens_per_frame: int,
-        action_tokens_per_frame: int,
-        device: torch.device,
-    ):
-        V = num_frames * video_tokens_per_frame
-        A = (num_frames - 1) * action_tokens_per_frame
-
-        def mask_mod(b, h, q_idx, kv_idx):
-            q_action_frame = q_idx // action_tokens_per_frame
-
-            k_is_video = kv_idx < V
-            k_is_action = kv_idx >= V
-            k_video_frame = kv_idx // video_tokens_per_frame
-            k_action_frame = (kv_idx - V) // action_tokens_per_frame
-
-            action_video = k_is_video & (
-                (q_action_frame <= k_video_frame) & ((q_action_frame + 1) >= k_video_frame)
-            )
-            action_action = k_is_action & (q_action_frame == k_action_frame)
-
-            return action_video | action_action
-
-        return create_block_mask(
-            mask_mod,
-            B=None,
-            H=None,
-            Q_LEN=A,
-            KV_LEN=V + A,
-            device=device,
-        )
-
     @torch.no_grad()
-    def _resolve_inference_token_layout(
+    def _build_inference_attention_mask(
         self,
         video_seq_len: int,
         action_seq_len: int,
         video_tokens_per_frame: int,
-    ) -> tuple[int, int]:
-
+        device: torch.device,
+    ) -> tuple[torch.Tensor, int, int]:
         if video_seq_len % video_tokens_per_frame != 0:
             raise ValueError(
                 "`video_seq_len` must be divisible by `video_tokens_per_frame` in "
@@ -338,36 +121,36 @@ class CausalWAMIDM(FastWAMJoint):
             )
 
         action_tokens_per_frame = action_seq_len // (num_frames - 1)
-        return num_frames, action_tokens_per_frame
 
-    @torch.no_grad()
-    def _build_inference_attention_mask(
-        self,
-        video_seq_len: int,
-        action_seq_len: int,
-        video_tokens_per_frame: int,
-        device: torch.device,
-    ):
-        num_frames, action_tokens_per_frame = self._resolve_inference_token_layout(
-            video_seq_len=video_seq_len,
-            action_seq_len=action_seq_len,
-            video_tokens_per_frame=video_tokens_per_frame,
+        V = num_frames * video_tokens_per_frame
+        A = (num_frames - 1) * action_tokens_per_frame
+        total = V + A
+
+        mask = torch.zeros((total, total), dtype=torch.bool, device=device)
+
+        frame_idx = torch.arange(num_frames, device=device).repeat_interleave(video_tokens_per_frame)
+        q_frame = frame_idx.unsqueeze(1)
+        k_frame = frame_idx.unsqueeze(0)
+
+        action_idx = torch.arange(num_frames - 1, device=device).repeat_interleave(action_tokens_per_frame)
+        q_action = action_idx.unsqueeze(1)
+        k_action = action_idx.unsqueeze(0)
+
+        video_start, video_end = 0, V
+        action_start, action_end = V, total
+
+        # video -> video: causal by frame
+        mask[video_start:video_end, video_start:video_end] = (q_frame >= k_frame)
+
+        # action -> video: action_t can see video_t and video_{t+1}
+        mask[action_start:action_end, video_start:video_end] = (
+            (q_action <= k_frame) & ((q_action + 1) >= k_frame)
         )
 
-        if self.use_flex_attention:
-            return self._causal_block_mask(
-                num_frames=num_frames,
-                video_tokens_per_frame=video_tokens_per_frame,
-                action_tokens_per_frame=action_tokens_per_frame,
-                device=device,
-            )
-        else:
-            return self._causal_self_attention_mask(
-                num_frames=num_frames,
-                video_tokens_per_frame=video_tokens_per_frame,
-                action_tokens_per_frame=action_tokens_per_frame,
-                device=device,
-            )
+        # action -> action: same transition block only
+        mask[action_start:action_end, action_start:action_end] = (q_action == k_action)
+
+        return mask, num_frames, action_tokens_per_frame
             
     def training_loss(self, sample, tiled: bool = False):
         inputs = self.build_inputs(sample, tiled=tiled)
@@ -497,12 +280,8 @@ class CausalWAMIDM(FastWAMJoint):
                 "video": merged_video_t_mod,
                 "action": action_pre["t_mod"],
             },
+            "attention_mask": attention_mask,
         }
-        if self.use_flex_attention:
-            mot_kwargs["attention_mask"] = None
-            mot_kwargs["block_mask"] = attention_mask
-        else:
-            mot_kwargs["attention_mask"] = attention_mask
 
         tokens_out = self.mot(**mot_kwargs)
 
@@ -731,8 +510,6 @@ class CausalWAMIDM(FastWAMJoint):
 
         inference_layout: Optional[dict[str, int]] = None
         dense_joint_attention_mask = None
-        video_self_block_mask = None
-        action_query_block_mask = None
 
         for k in range(1, latent_t):
             # Stage 1: denoise only the new video frame autoregressively.
@@ -801,10 +578,11 @@ class CausalWAMIDM(FastWAMJoint):
             action_seq_len = int(latents_action.shape[1])
 
             if inference_layout is None:
-                num_frames, action_tokens_per_frame = self._resolve_inference_token_layout(
+                dense_joint_attention_mask, num_frames, action_tokens_per_frame = self._build_inference_attention_mask(
                     video_seq_len=video_seq_len,
                     action_seq_len=action_seq_len,
                     video_tokens_per_frame=video_tokens_per_frame,
+                    device=video_pre_cond["tokens"].device,
                 )
                 inference_layout = {
                     "video_seq_len": video_seq_len,
@@ -814,109 +592,42 @@ class CausalWAMIDM(FastWAMJoint):
                     "action_tokens_per_frame": action_tokens_per_frame,
                 }
 
-                if self.use_flex_attention:
-                    video_self_block_mask = self._causal_video_only_block_mask(
-                        num_frames=num_frames,
-                        video_tokens_per_frame=video_tokens_per_frame,
-                        device=video_pre_cond["tokens"].device,
-                    )
-                    action_query_block_mask = self._causal_action_query_block_mask(
-                        num_frames=num_frames,
-                        video_tokens_per_frame=video_tokens_per_frame,
-                        action_tokens_per_frame=action_tokens_per_frame,
-                        device=video_pre_cond["tokens"].device,
-                    )
-                else:
-                    dense_joint_attention_mask = self._build_inference_attention_mask(
-                        video_seq_len=video_seq_len,
-                        action_seq_len=action_seq_len,
-                        video_tokens_per_frame=video_tokens_per_frame,
-                        device=video_pre_cond["tokens"].device,
-                    )
+            if dense_joint_attention_mask is None or inference_layout is None:
+                raise RuntimeError("Missing cached dense attention mask for inference.")
 
-            if self.use_flex_attention:
-                if video_self_block_mask is None or action_query_block_mask is None or inference_layout is None:
-                    raise RuntimeError("Missing cached block masks for flex-attention inference.")
+            video_kv_cache = self.mot.prefill_video_cache(
+                video_tokens=video_pre_cond["tokens"],
+                video_freqs=video_pre_cond["freqs"],
+                video_t_mod=video_pre_cond["t_mod"],
+                video_context_payload={
+                    "context": video_pre_cond["context"],
+                    "mask": video_pre_cond["context_mask"],
+                },
+                video_attention_mask=dense_joint_attention_mask[
+                    : inference_layout["video_seq_len"],
+                    : inference_layout["video_seq_len"],
+                ],
+            )
 
-                video_kv_cache = self.mot.prefill_video_cache(
-                    video_tokens=video_pre_cond["tokens"],
-                    video_freqs=video_pre_cond["freqs"],
-                    video_t_mod=video_pre_cond["t_mod"],
-                    video_context_payload={
-                        "context": video_pre_cond["context"],
-                        "mask": video_pre_cond["context_mask"],
-                    },
-                    video_attention_mask=None,
-                    video_block_mask=video_self_block_mask,
+            for step_t_action, step_delta_action in zip(infer_timesteps_action, infer_deltas_action):
+                timestep_action = step_t_action.unsqueeze(0).to(
+                    dtype=latents_action.dtype,
+                    device=self.device,
                 )
-
-                for step_t_action, step_delta_action in zip(infer_timesteps_action, infer_deltas_action):
-                    timestep_action = step_t_action.unsqueeze(0).to(
-                        dtype=latents_action.dtype,
-                        device=self.device,
-                    )
-                    action_pre = self.action_expert.pre_dit(
-                        action_tokens=latents_action,
-                        timestep=timestep_action,
-                        context=context,
-                        context_mask=context_mask,
-                    )
-                    action_tokens = self.mot.forward_action_with_video_cache(
-                        action_tokens=action_pre["tokens"],
-                        action_freqs=action_pre["freqs"],
-                        action_t_mod=action_pre["t_mod"],
-                        action_context_payload={
-                            "context": action_pre["context"],
-                            "mask": action_pre["context_mask"],
-                        },
-                        video_kv_cache=video_kv_cache,
-                        attention_mask=None,
-                        block_mask=action_query_block_mask,
-                        video_seq_len=inference_layout["video_seq_len"],
-                    )
-                    pred_action = self.action_expert.post_dit(action_tokens, action_pre)
-                    latents_action = self.infer_action_scheduler.step(
-                        pred_action,
-                        step_delta_action,
-                        latents_action,
-                    )
-            else:
-                if dense_joint_attention_mask is None or inference_layout is None:
-                    raise RuntimeError("Missing cached dense attention mask for inference.")
-
-                video_kv_cache = self.mot.prefill_video_cache(
-                    video_tokens=video_pre_cond["tokens"],
-                    video_freqs=video_pre_cond["freqs"],
-                    video_t_mod=video_pre_cond["t_mod"],
-                    video_context_payload={
-                        "context": video_pre_cond["context"],
-                        "mask": video_pre_cond["context_mask"],
-                    },
-                    video_attention_mask=dense_joint_attention_mask[
-                        : inference_layout["video_seq_len"],
-                        : inference_layout["video_seq_len"],
-                    ],
+                pred_action = self._predict_action_noise_with_cache(
+                    latents_action=latents_action,
+                    timestep_action=timestep_action,
+                    context=context,
+                    context_mask=context_mask,
+                    video_kv_cache=video_kv_cache,
+                    attention_mask=dense_joint_attention_mask,
+                    video_seq_len=inference_layout["video_seq_len"],
                 )
-
-                for step_t_action, step_delta_action in zip(infer_timesteps_action, infer_deltas_action):
-                    timestep_action = step_t_action.unsqueeze(0).to(
-                        dtype=latents_action.dtype,
-                        device=self.device,
-                    )
-                    pred_action = self._predict_action_noise_with_cache(
-                        latents_action=latents_action,
-                        timestep_action=timestep_action,
-                        context=context,
-                        context_mask=context_mask,
-                        video_kv_cache=video_kv_cache,
-                        attention_mask=dense_joint_attention_mask,
-                        video_seq_len=inference_layout["video_seq_len"],
-                    )
-                    latents_action = self.infer_action_scheduler.step(
-                        pred_action,
-                        step_delta_action,
-                        latents_action,
-                    )
+                latents_action = self.infer_action_scheduler.step(
+                    pred_action,
+                    step_delta_action,
+                    latents_action,
+                )
 
             actions.append(latents_action)
 
