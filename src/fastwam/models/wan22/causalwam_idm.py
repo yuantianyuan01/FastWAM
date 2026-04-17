@@ -509,7 +509,7 @@ class CausalWAMIDM(FastWAMJoint):
         )
 
         inference_layout: Optional[dict[str, int]] = None
-        dense_joint_attention_mask = None
+        inference_attention_mask = None
 
         for k in range(1, latent_t):
             # Stage 1: denoise only the new video frame autoregressively.
@@ -578,7 +578,7 @@ class CausalWAMIDM(FastWAMJoint):
             action_seq_len = int(latents_action.shape[1])
 
             if inference_layout is None:
-                dense_joint_attention_mask, num_frames, action_tokens_per_frame = self._build_inference_attention_mask(
+                inference_attention_mask, num_frames, action_tokens_per_frame = self._build_inference_attention_mask(
                     video_seq_len=video_seq_len,
                     action_seq_len=action_seq_len,
                     video_tokens_per_frame=video_tokens_per_frame,
@@ -592,8 +592,8 @@ class CausalWAMIDM(FastWAMJoint):
                     "action_tokens_per_frame": action_tokens_per_frame,
                 }
 
-            if dense_joint_attention_mask is None or inference_layout is None:
-                raise RuntimeError("Missing cached dense attention mask for inference.")
+            if inference_attention_mask is None or inference_layout is None:
+                raise RuntimeError("Missing cached inference attention mask for inference.")
 
             video_kv_cache = self.mot.prefill_video_cache(
                 video_tokens=video_pre_cond["tokens"],
@@ -603,7 +603,7 @@ class CausalWAMIDM(FastWAMJoint):
                     "context": video_pre_cond["context"],
                     "mask": video_pre_cond["context_mask"],
                 },
-                video_attention_mask=dense_joint_attention_mask[
+                video_attention_mask=inference_attention_mask[
                     : inference_layout["video_seq_len"],
                     : inference_layout["video_seq_len"],
                 ],
@@ -620,7 +620,7 @@ class CausalWAMIDM(FastWAMJoint):
                     context=context,
                     context_mask=context_mask,
                     video_kv_cache=video_kv_cache,
-                    attention_mask=dense_joint_attention_mask,
+                    attention_mask=inference_attention_mask,
                     video_seq_len=inference_layout["video_seq_len"],
                 )
                 latents_action = self.infer_action_scheduler.step(

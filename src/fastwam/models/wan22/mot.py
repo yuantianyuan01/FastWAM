@@ -79,23 +79,12 @@ class MoT(nn.Module):
         q_cat: torch.Tensor,
         k_cat: torch.Tensor,
         v_cat: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        block_mask=None,
+        attention_mask: torch.Tensor,
     ) -> torch.Tensor:
-        if (attention_mask is None) == (block_mask is None):
-            raise ValueError("Exactly one of `attention_mask` or `block_mask` must be provided.")
-
-        attn_mask = None if attention_mask is None else attention_mask.to(device=q_cat.device)
+        attn_mask = attention_mask.to(device=q_cat.device)
 
         def _forward(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-            return flash_attention(
-                q=q,
-                k=k,
-                v=v,
-                num_heads=self.num_heads,
-                ctx_mask=attn_mask,
-                block_mask=block_mask,
-            )
+            return flash_attention(q=q, k=k, v=v, num_heads=self.num_heads, ctx_mask=attn_mask)
 
         if self.mot_checkpoint_mixed_attn and self.training:
             return torch.utils.checkpoint.checkpoint(
@@ -271,8 +260,7 @@ class MoT(nn.Module):
         video_freqs: torch.Tensor,
         video_t_mod: torch.Tensor,
         video_context_payload: Optional[dict],
-        video_attention_mask: Optional[torch.Tensor] = None,
-        video_block_mask=None,
+        video_attention_mask: torch.Tensor,
     ) -> list[dict[str, torch.Tensor]]:
         """Prefill video branch once and cache per-layer K/V for action denoising.
 
@@ -283,8 +271,7 @@ class MoT(nn.Module):
             video_context_payload: Optional dict for video cross-attention.
                 - `context`: encoder states [B, L, D]
                 - `mask`: attention mask [B, Sv, L] or [B, 1, Sv, L]
-            video_attention_mask: Dense video self-attention mask, shape [Sv, Sv].
-            video_block_mask: Optional flex_attention BlockMask for video self-attention.
+            video_attention_mask: Video self-attention mask, shape [Sv, Sv].
 
         Returns:
             Layer-wise cache list with length `num_layers`.
@@ -294,22 +281,19 @@ class MoT(nn.Module):
         """
         if "video" not in self.mixtures:
             raise ValueError("MoT requires `video` expert for `prefill_video_cache`.")
-        if (video_attention_mask is None) == (video_block_mask is None):
-            raise ValueError("Exactly one of `video_attention_mask` or `video_block_mask` must be provided.")
-        if video_attention_mask is not None:
-            if video_attention_mask.ndim != 2:
-                raise ValueError(
-                    f"`video_attention_mask` must be 2D [S,S], got shape {tuple(video_attention_mask.shape)}"
-                )
-            if video_attention_mask.shape[0] != video_attention_mask.shape[1]:
-                raise ValueError(
-                    f"`video_attention_mask` must be square, got shape {tuple(video_attention_mask.shape)}"
-                )
-            if video_attention_mask.shape[0] != video_tokens.shape[1]:
-                raise ValueError(
-                    "`video_attention_mask` seq length mismatch: "
-                    f"mask={video_attention_mask.shape[0]} vs tokens={video_tokens.shape[1]}"
-                )
+        if video_attention_mask.ndim != 2:
+            raise ValueError(
+                f"`video_attention_mask` must be 2D [S,S], got shape {tuple(video_attention_mask.shape)}"
+            )
+        if video_attention_mask.shape[0] != video_attention_mask.shape[1]:
+            raise ValueError(
+                f"`video_attention_mask` must be square, got shape {tuple(video_attention_mask.shape)}"
+            )
+        if video_attention_mask.shape[0] != video_tokens.shape[1]:
+            raise ValueError(
+                "`video_attention_mask` seq length mismatch: "
+                f"mask={video_attention_mask.shape[0]} vs tokens={video_tokens.shape[1]}"
+            )
 
         expert = self.mixtures["video"]
         x = video_tokens
@@ -340,7 +324,6 @@ class MoT(nn.Module):
                 k_cat=k,
                 v_cat=v,
                 attention_mask=video_attention_mask,
-                block_mask=video_block_mask,
             )
             # Update video tokens for the next layer and persist current layer K/V.
             x = self._apply_post_with_optional_checkpoint(
@@ -364,9 +347,8 @@ class MoT(nn.Module):
         action_t_mod: torch.Tensor,
         action_context_payload: Optional[dict],
         video_kv_cache: list[dict[str, torch.Tensor]],
+        attention_mask: torch.Tensor,
         video_seq_len: int,
-        attention_mask: Optional[torch.Tensor] = None,
-        block_mask=None,
     ) -> torch.Tensor:
         """Run action branch with cached video K/V instead of recomputing video tokens.
 
@@ -378,8 +360,7 @@ class MoT(nn.Module):
                 - `context`: encoder states [B, L, D]
                 - `mask`: attention mask [B, Sa, L] or [B, 1, Sa, L]
             video_kv_cache: Layer-wise cached video K/V from `prefill_video_cache`.
-            attention_mask: Optional dense joint [video+action] mask, shape [Sv+Sa, Sv+Sa].
-            block_mask: Optional flex_attention BlockMask for action-query attention.
+            attention_mask: Joint [video+action] mask, shape [Sv+Sa, Sv+Sa].
             video_seq_len: Video token count `Sv` in the joint sequence prefix.
 
         Returns:
@@ -391,26 +372,20 @@ class MoT(nn.Module):
             raise ValueError(
                 f"`video_kv_cache` must contain {self.num_layers} layers, got {len(video_kv_cache)}."
             )
-        if (attention_mask is None) == (block_mask is None):
-            raise ValueError("Exactly one of `attention_mask` or `block_mask` must be provided.")
+        if attention_mask.ndim != 2:
+            raise ValueError(f"`attention_mask` must be 2D [S,S], got shape {tuple(attention_mask.shape)}")
+        if attention_mask.shape[0] != attention_mask.shape[1]:
+            raise ValueError(f"`attention_mask` must be square, got shape {tuple(attention_mask.shape)}")
 
         action_seq_len = int(action_tokens.shape[1])
         total_seq_len = int(video_seq_len) + action_seq_len
-        action_attention_mask = None
-        action_block_mask = block_mask
-        if attention_mask is not None:
-            if attention_mask.ndim != 2:
-                raise ValueError(f"`attention_mask` must be 2D [S,S], got shape {tuple(attention_mask.shape)}")
-            if attention_mask.shape[0] != attention_mask.shape[1]:
-                raise ValueError(f"`attention_mask` must be square, got shape {tuple(attention_mask.shape)}")
-            if attention_mask.shape[0] != total_seq_len:
-                raise ValueError(
-                    "`attention_mask` seq length mismatch: "
-                    f"mask={attention_mask.shape[0]} vs expected_total={total_seq_len}"
-                )
-            # Use the action query rows from the joint [video+action] mask.
-            action_attention_mask = attention_mask[video_seq_len:total_seq_len, :total_seq_len]
-            action_block_mask = None
+        if attention_mask.shape[0] != total_seq_len:
+            raise ValueError(
+                "`attention_mask` seq length mismatch: "
+                f"mask={attention_mask.shape[0]} vs expected_total={total_seq_len}"
+            )
+        # Use the action query rows from the joint [video+action] mask.
+        action_attention_mask = attention_mask[video_seq_len:total_seq_len, :total_seq_len]
 
         expert = self.mixtures["action"]
         x = action_tokens
@@ -455,7 +430,6 @@ class MoT(nn.Module):
                 k_cat=k_cat,
                 v_cat=v_cat,
                 attention_mask=action_attention_mask,
-                block_mask=action_block_mask,
             )
             x = self._apply_post_with_optional_checkpoint(
                 block=block,
@@ -473,11 +447,10 @@ class MoT(nn.Module):
     def forward(
         self,
         embeds_all: Dict[str, torch.Tensor],
-        attention_mask: Optional[torch.Tensor],
+        attention_mask: torch.Tensor,
         freqs_all: Dict[str, torch.Tensor],
         context_all: Dict[str, Optional[dict]],
         t_mod_all: Dict[str, torch.Tensor],
-        block_mask=None,
     ):
         missing = [k for k in self.expert_order if k not in embeds_all]
         if missing:
@@ -489,13 +462,10 @@ class MoT(nn.Module):
         if missing:
             raise ValueError(f"Missing expert t_mod for {missing}")
 
-        if (attention_mask is None) == (block_mask is None):
-            raise ValueError("Exactly one of `attention_mask` or `block_mask` must be provided.")
-        if attention_mask is not None:
-            if attention_mask.ndim != 2:
-                raise ValueError(f"`attention_mask` must be 2D [S, S], got shape {tuple(attention_mask.shape)}")
-            if attention_mask.shape[0] != attention_mask.shape[1]:
-                raise ValueError(f"`attention_mask` must be square, got shape {tuple(attention_mask.shape)}")
+        if attention_mask.ndim != 2:
+            raise ValueError(f"`attention_mask` must be 2D [S, S], got shape {tuple(attention_mask.shape)}")
+        if attention_mask.shape[0] != attention_mask.shape[1]:
+            raise ValueError(f"`attention_mask` must be square, got shape {tuple(attention_mask.shape)}")
 
         tokens_all = {k: v for k, v in embeds_all.items()}
 
@@ -550,21 +520,14 @@ class MoT(nn.Module):
             k_cat = torch.cat(k_chunks, dim=1)
             v_cat = torch.cat(v_chunks, dim=1)
 
-            if attention_mask is not None:
-                total_seq = q_cat.shape[1]
-                if attention_mask.shape[0] != total_seq:
-                    raise ValueError(
-                        "Attention mask seq length mismatch: "
-                        f"mask={attention_mask.shape[0]} vs tokens={total_seq}"
-                    )
+            total_seq = q_cat.shape[1]
+            if attention_mask.shape[0] != total_seq:
+                raise ValueError(
+                    "Attention mask seq length mismatch: "
+                    f"mask={attention_mask.shape[0]} vs tokens={total_seq}"
+                )
 
-            mixed = self._mixed_attention(
-                q_cat=q_cat,
-                k_cat=k_cat,
-                v_cat=v_cat,
-                attention_mask=attention_mask,
-                block_mask=block_mask,
-            )
+            mixed = self._mixed_attention(q_cat=q_cat, k_cat=k_cat, v_cat=v_cat, attention_mask=attention_mask)
 
             start = 0
             for name, seq_len in zip(self.expert_order, seq_lens):
