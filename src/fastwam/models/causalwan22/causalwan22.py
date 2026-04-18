@@ -18,7 +18,7 @@ inference where previous predictions (not GT) are used as context.
 """
 
 import functools
-from typing import Any
+from typing import Any, Dict
 
 import torch
 import torch.nn.functional as F
@@ -148,131 +148,37 @@ class CausalWanVideoDiT(WanVideoDiT):
             mask_mod, B=None, H=None, Q_LEN=N, KV_LEN=N, device=device,
         )
 
-    def forward_with_per_frame_timesteps(
-        self,
-        latents: torch.Tensor,              # [B, C, F, H, W]
-        per_frame_timesteps: torch.Tensor,   # [B, F]
-        context: torch.Tensor,              # [B, L, D]
-        context_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        """DiT forward with per-frame timestep control.
-
-        For autoregressive inference: build ``[clean_0, ..., clean_{k-1},
-        noisy_k]`` and use the ``per_frame_causal`` attention mask so that
-        frame k only attends to frames 0..k.  Clean conditioning frames get
-        timestep 0; the target frame gets the denoising timestep.
-
-        Args:
-            latents: Video latents ``[B, C, F, H, W]``.
-            per_frame_timesteps: Per-frame timestep values ``[B, F]``.
-            context: Text embeddings ``[B, L, D]``.
-            context_mask: Boolean mask ``[B, L]`` for text tokens.
-
-        Returns:
-            Model prediction ``[B, C, F, H, W]``.
-        """
-        assert self.video_attention_mask_mode == "per_frame_causal"
-        
-        dummy_t = torch.zeros(
-            latents.shape[0], dtype=latents.dtype, device=latents.device,
+    def pre_dit_tf(
+        self, 
+        cond_latents: torch.Tensor, 
+        noisy_latents: torch.Tensor, 
+        cond_timestep: torch.Tensor, 
+        noisy_timestep: torch.Tensor, 
+        context: torch.Tensor, 
+        context_mask: torch.Tensor, 
+        fuse_vae_embedding_in_latents: bool,
+    ) -> Dict[str, Any]:
+        dummy_timestep = torch.zeros(
+            cond_latents.shape[0], dtype=cond_latents.dtype, device=cond_latents.device,
         )
-        latents, _, context_mask = self._validate_forward_inputs(
-            x=latents, timestep=dummy_t, context=context,
-            context_mask=context_mask, action=None,
-        )
-
-        batch_size = latents.shape[0]
-        patch_h = int(self.patch_size[1])
-        patch_w = int(self.patch_size[2])
-        tokens_per_frame = (latents.shape[3] // patch_h) * (latents.shape[4] // patch_w)
-
-        x = self.patchify(latents)
-        f, h, w = x.shape[2:]
-        seq_len = f * h * w
-
-        x_tokens = rearrange(x, "b c f h w -> b (f h w) c").contiguous()
-
-        # Per-token timestep embeddings: broadcast [B, F] -> [B, F*tokens]
-        token_timesteps = (
-            per_frame_timesteps
-            .unsqueeze(-1)
-            .expand(batch_size, f, tokens_per_frame)
-            .contiguous()
-            .reshape(batch_size, -1)
-        )
-        token_t_emb = sinusoidal_embedding_1d(self.freq_dim, token_timesteps.reshape(-1))
-        t = self.time_embedding(token_t_emb).reshape(batch_size, -1, self.hidden_dim)
-        t_mod = self.time_projection(t).unflatten(2, (6, self.hidden_dim))
-
-        context = self.text_embedding(context)
-        context_mask = context_mask.unsqueeze(1).expand(-1, seq_len, -1)
-
-        freqs = self._rope_freqs(f, h, w, x_tokens.device)
-
-        if self.use_flex_attention:
-            block_mask = self._per_frame_causal_block_mask(f, tokens_per_frame, x_tokens.device)
-            self_attn_mask = None
-        else:
-            block_mask = None
-            self_attn_mask = self._per_frame_causal_self_attn_mask(
-                f, tokens_per_frame, x_tokens.device,
-            )
-
-        for block in self.blocks:
-            x_tokens = block(
-                x_tokens, context, t_mod, freqs,
-                context_mask=context_mask,
-                self_attn_mask=self_attn_mask,
-                block_mask=block_mask,
-            )
-
-        x_out = self.head(x_tokens, t)
-        return self.unpatchify(x_out, (f, h, w))
-
-    def forward_teacher_forcing(
-        self,
-        noisy_latents: torch.Tensor,    # [B, C, F, H, W]
-        cond_latents: torch.Tensor,     # [B, C, F, H, W]
-        timestep: torch.Tensor,         # [B, F]
-        cond_timestep: torch.Tensor,    # [B, F]
-        context: torch.Tensor,          # [B, L, D]
-        context_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        """Forward with teacher forcing.
-
-        Args:
-            noisy_latents: Noised video latents (frame 0 already fixed to
-                the clean input image).
-            cond_latents: Conditioning latents (possibly noised).
-            timestep: Per-frame diffusion timestep ``[B, F]`` for the noisy
-                branch. All tokens within one frame share a single t.
-            cond_timestep: Per-frame diffusion timestep ``[B, F]`` for the
-                conditioning branch (0 means fully clean).
-            context: Text embeddings ``[B, L, D]``.
-            context_mask: Boolean mask ``[B, L]`` for text tokens.
-
-        Returns:
-            Model prediction for the noisy frames, ``[B, C, F, H, W]``.
-        """
-        # Reuse the parent's x/context/context_mask validation with a 1D
-        # placeholder timestep, since the parent validator hard-requires 1D.
-        dummy_t = torch.zeros(
-            noisy_latents.shape[0],
-            dtype=noisy_latents.dtype,
-            device=noisy_latents.device,
-        )
-        noisy_latents, _, context_mask = self._validate_forward_inputs(
-            x=noisy_latents,
-            timestep=dummy_t,
-            context=context,
-            context_mask=context_mask,
+        cond_latents, _, context_mask = self._validate_forward_inputs(
+            x=cond_latents, 
+            timestep=dummy_timestep, 
+            context=context, 
+            context_mask=context_mask, 
             action=None,
         )
-        assert self.seperated_timestep and self.fuse_vae_embedding_in_latents, (
+        noisy_latents, _, context_mask = self._validate_forward_inputs(
+            x=noisy_latents, 
+            timestep=dummy_timestep, 
+            context=context, 
+            context_mask=context_mask, 
+            action=None,
+        )
+        assert self.seperated_timestep and fuse_vae_embedding_in_latents, (
             "Teacher forcing requires seperated_timestep=True and "
             "fuse_vae_embedding_in_latents=True"
         )
-
         batch_size = noisy_latents.shape[0]
         patch_h = int(self.patch_size[1])
         patch_w = int(self.patch_size[2])
@@ -304,9 +210,7 @@ class CausalWanVideoDiT(WanVideoDiT):
         # Frame 0 is the clean input image on both branches, so its
         # per-token timestep is forced to 0.
         cond_ts = _broadcast_ts(cond_timestep)
-        cond_ts[:, 0, :] = 0
-        noisy_ts = _broadcast_ts(timestep)
-        noisy_ts[:, 0, :] = 0
+        noisy_ts = _broadcast_ts(noisy_timestep)
         token_timesteps = torch.cat(
             [cond_ts.reshape(batch_size, -1), noisy_ts.reshape(batch_size, -1)],
             dim=1,
@@ -323,6 +227,268 @@ class CausalWanVideoDiT(WanVideoDiT):
         # --- RoPE: identical positions for cond and noisy copies ---
         freqs = self._rope_freqs(num_frames, h, w, x_tokens.device)
         freqs = torch.cat([freqs, freqs], dim=0)  # [2N, 1, D]
+        
+        return {
+            "tokens": x_tokens, 
+            "cond_tokens": cond_tokens,
+            "noisy_tokens": noisy_tokens,
+            "freqs": freqs, 
+            "t": t, 
+            "t_mod": t_mod, 
+            "context": context, 
+            "context_mask": context_mask, 
+            "meta": {
+                "grid_size": (num_frames, h, w), 
+                "tokens_per_frame": tokens_per_frame, 
+                "tokens_per_block": tokens_per_block,
+                "batch_size": batch_size, 
+            },
+        }
+    
+    def post_dit_tf(
+        self,
+        x_tokens: torch.Tensor,
+        pre_state: Dict[str, Any],
+    ) -> torch.Tensor:
+        f, h, w = pre_state["meta"]["grid_size"]
+        seq_len = x_tokens.shape[1]
+        # only keep the embedding for the noisy tokens
+        x = self.head(x_tokens, pre_state["t"][:, -seq_len:])
+        x = self.unpatchify(x, (f, h, w))
+        return x
+
+    def pre_dit_per_frame(
+        self,
+        latents: torch.Tensor,
+        per_frame_timesteps: torch.Tensor,
+        context: torch.Tensor,
+        context_mask: Optional[torch.Tensor] = None,
+    ) -> Dict[str, Any]:
+        """Single-stream pre-DiT with per-frame diffusion timesteps.
+
+        Analogous to ``WanVideoDiT.pre_dit`` — takes one stream of latents
+        and returns the same dict of intermediate tensors — except that
+        each frame in the sequence may carry its own diffusion timestep.
+        Tokens within the same frame still share a single timestep.
+
+        Sibling to ``pre_dit_tf``; does not override the base ``pre_dit``,
+        so ``Wan22Core.infer`` behavior is unchanged. Used by
+        ``forward_with_per_frame_timesteps`` (which is in turn called
+        from ``CausalWan22Core.infer``).
+
+        Args:
+            latents: Video latents ``[B, C, F, H, W]``.
+            per_frame_timesteps: ``[B, F]`` diffusion timestep for each
+                latent frame. The caller owns the clean-frame convention
+                (e.g. setting ``[:, 0] = 0`` when frame 0 is the clean
+                input image).
+            context: Text embeddings ``[B, L, D]``.
+            context_mask: Boolean mask ``[B, L]`` for text tokens.
+
+        Returns:
+            Dict with keys ``tokens, freqs, t, t_mod, context,
+            context_mask, meta`` — same layout as ``WanVideoDiT.pre_dit``.
+
+        Requires ``seperated_timestep=True`` and
+        ``fuse_vae_embedding_in_latents=True``.
+        """
+        # Reuse base shape/dtype validation with a dummy 1D timestep.
+        dummy_t = torch.zeros(
+            latents.shape[0], dtype=latents.dtype, device=latents.device,
+        )
+        latents, _, context_mask = self._validate_forward_inputs(
+            x=latents,
+            timestep=dummy_t,
+            context=context,
+            context_mask=context_mask,
+            action=None,
+        )
+        if not self.seperated_timestep:
+            raise NotImplementedError(
+                "pre_dit_per_frame requires seperated_timestep=True."
+            )
+
+        batch_size = latents.shape[0]
+        num_latent_frames = latents.shape[2]
+        patch_h = int(self.patch_size[1])
+        patch_w = int(self.patch_size[2])
+        if latents.shape[3] % patch_h != 0 or latents.shape[4] % patch_w != 0:
+            raise ValueError(
+                "Latent spatial shape must be divisible by DiT patch size, "
+                f"got HxW=({latents.shape[3]}, {latents.shape[4]}), "
+                f"patch=({patch_h}, {patch_w})"
+            )
+        tokens_per_frame = (latents.shape[3] // patch_h) * (latents.shape[4] // patch_w)
+
+        if per_frame_timesteps.ndim != 2 or per_frame_timesteps.shape != (
+            batch_size, num_latent_frames,
+        ):
+            raise ValueError(
+                f"`per_frame_timesteps` must be [B, F]=[{batch_size}, "
+                f"{num_latent_frames}], got {tuple(per_frame_timesteps.shape)}"
+            )
+
+        # Per-token timesteps: [B, F] -> [B, F, tokens_per_frame] -> [B, F*tpf].
+        token_timesteps = (
+            per_frame_timesteps.unsqueeze(-1)
+            .expand(batch_size, num_latent_frames, tokens_per_frame)
+            .contiguous()
+            .reshape(batch_size, -1)
+        )
+        token_t_emb = sinusoidal_embedding_1d(self.freq_dim, token_timesteps.reshape(-1))
+        t = self.time_embedding(token_t_emb).reshape(batch_size, -1, self.hidden_dim)
+        t_mod = self.time_projection(t).unflatten(2, (6, self.hidden_dim))
+
+        # Patchify.
+        x = self.patchify(latents)
+        f, h, w = x.shape[2:]
+        seq_len = f * h * w
+
+        # Text context.
+        context = self.text_embedding(context)
+        context_mask = context_mask.unsqueeze(1).expand(-1, seq_len, -1)
+
+        x_tokens = rearrange(x, "b c f h w -> b (f h w) c").contiguous()
+        freqs = self._rope_freqs(f, h, w, x_tokens.device)
+
+        return {
+            "tokens": x_tokens,
+            "freqs": freqs,
+            "t": t,
+            "t_mod": t_mod,
+            "context": context,
+            "context_mask": context_mask,
+            "meta": {
+                "grid_size": (f, h, w),
+                "tokens_per_frame": tokens_per_frame,
+                "batch_size": batch_size,
+            },
+        }
+
+    def post_dit_per_frame(
+        self,
+        x_tokens: torch.Tensor,
+        pre_state: Dict[str, Any],
+    ) -> torch.Tensor:
+        """Inverse of ``pre_dit_per_frame``: apply head with per-token t, unpatchify.
+
+        Structurally identical to ``WanVideoDiT.post_dit``; exposed as a
+        sibling for symmetry with ``pre_dit_per_frame`` and to keep the
+        causal per-frame pipeline self-contained.
+        """
+        f, h, w = pre_state["meta"]["grid_size"]
+        x = self.head(x_tokens, pre_state["t"])
+        x = self.unpatchify(x, (f, h, w))
+        return x
+
+    def forward_with_per_frame_timesteps(
+        self,
+        latents: torch.Tensor,              # [B, C, F, H, W]
+        per_frame_timesteps: torch.Tensor,   # [B, F]
+        context: torch.Tensor,              # [B, L, D]
+        context_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """DiT forward with per-frame timestep control.
+
+        For autoregressive inference: build ``[clean_0, ..., clean_{k-1},
+        noisy_k]`` and use the ``per_frame_causal`` attention mask so that
+        frame k only attends to frames 0..k. The caller is responsible
+        for setting the timestep of clean prefix frames to 0 and providing
+        the corresponding clean latents.
+
+        Args:
+            latents: Video latents ``[B, C, F, H, W]``.
+            per_frame_timesteps: Per-frame timestep values ``[B, F]``.
+            context: Text embeddings ``[B, L, D]``.
+            context_mask: Boolean mask ``[B, L]`` for text tokens.
+
+        Returns:
+            Model prediction ``[B, C, F, H, W]``.
+        """
+        assert self.video_attention_mask_mode == "per_frame_causal"
+
+        pre_state = self.pre_dit_per_frame(
+            latents=latents,
+            per_frame_timesteps=per_frame_timesteps,
+            context=context,
+            context_mask=context_mask,
+        )
+        x_tokens = pre_state["tokens"]
+        context_emb = pre_state["context"]
+        t_mod = pre_state["t_mod"]
+        freqs = pre_state["freqs"]
+        context_attn_mask = pre_state["context_mask"]
+        f, _, _ = pre_state["meta"]["grid_size"]
+        tokens_per_frame = int(pre_state["meta"]["tokens_per_frame"])
+
+        if self.use_flex_attention:
+            block_mask = self._per_frame_causal_block_mask(
+                f, tokens_per_frame, x_tokens.device,
+            )
+            self_attn_mask = None
+        else:
+            block_mask = None
+            self_attn_mask = self._per_frame_causal_self_attn_mask(
+                f, tokens_per_frame, x_tokens.device,
+            )
+
+        for block in self.blocks:
+            x_tokens = block(
+                x_tokens, context_emb, t_mod, freqs,
+                context_mask=context_attn_mask,
+                self_attn_mask=self_attn_mask,
+                block_mask=block_mask,
+            )
+
+        return self.post_dit_per_frame(x_tokens, pre_state)
+
+    def forward_teacher_forcing(
+        self,
+        noisy_latents: torch.Tensor,    # [B, C, F, H, W]
+        cond_latents: torch.Tensor,     # [B, C, F, H, W]
+        noisy_timestep: torch.Tensor,         # [B, F]
+        cond_timestep: torch.Tensor,    # [B, F]
+        context: torch.Tensor,          # [B, L, D]
+        context_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Forward with teacher forcing.
+
+        Args:
+            noisy_latents: Noised video latents (frame 0 already fixed to
+                the clean input image).
+            cond_latents: Conditioning latents (possibly noised).
+            timestep: Per-frame diffusion timestep ``[B, F]`` for the noisy
+                branch. All tokens within one frame share a single t.
+            cond_timestep: Per-frame diffusion timestep ``[B, F]`` for the
+                conditioning branch (0 means fully clean).
+            context: Text embeddings ``[B, L, D]``.
+            context_mask: Boolean mask ``[B, L]`` for text tokens.
+
+        Returns:
+            Model prediction for the noisy frames, ``[B, C, F, H, W]``.
+        """
+        # Reuse the parent's x/context/context_mask validation with a 1D
+        # placeholder timestep, since the parent validator hard-requires 1D.
+        
+        pre_state = self.pre_dit_tf(
+            cond_latents=cond_latents,
+            noisy_latents=noisy_latents,
+            cond_timestep=cond_timestep,
+            noisy_timestep=noisy_timestep,
+            context=context,
+            context_mask=context_mask,
+            fuse_vae_embedding_in_latents=self.fuse_vae_embedding_in_latents,
+        )
+
+        num_frames = noisy_latents.shape[2]
+        tokens_per_frame = int(pre_state["meta"]["tokens_per_frame"])
+        tokens_per_block = int(pre_state["meta"]["tokens_per_block"])
+        x_tokens = pre_state["tokens"]
+        t = pre_state["t"]
+        t_mod = pre_state["t_mod"]
+        freqs = pre_state["freqs"]
+        context = pre_state["context"]
+        context_mask = pre_state["context_mask"]
 
         # --- self-attention mask: prefer flex_attention block-sparse path ---
         if self.use_flex_attention:
@@ -358,12 +524,9 @@ class CausalWanVideoDiT(WanVideoDiT):
                     self_attn_mask=self_attn_mask,
                     block_mask=block_mask,
                 )
-
-        # --- extract noisy output, apply head, unpatchify ---
+        
         noisy_out = x_tokens[:, tokens_per_block:]
-        noisy_t = t[:, tokens_per_block:]
-        x = self.head(noisy_out, noisy_t)
-        return self.unpatchify(x, (num_frames, h, w))
+        return self.post_dit_tf(noisy_out, pre_state)
 
 
 # ---------------------------------------------------------------------------
@@ -387,13 +550,13 @@ class CausalWan22Core(Wan22Core):
     def __init__(
         self,
         *args,
-        noisy_cond_prob: float = 0.5,
+        cond_noise_prob: float = 0.5,
         cond_t_min: float = 0.5,
         cond_t_max: float = 1.0,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.noisy_cond_prob = float(noisy_cond_prob)
+        self.cond_noise_prob = float(cond_noise_prob)
         self.cond_t_min = float(cond_t_min)
         self.cond_t_max = float(cond_t_max)
         # Causal training/inference requires per_frame_causal masking in the DiT;
@@ -421,7 +584,7 @@ class CausalWan22Core(Wan22Core):
         num_train_timesteps: int = 1000,
         skip_dit_load_from_pretrain: bool = False,
         load_text_encoder: bool = True,
-        noisy_cond_prob: float = 0.5,
+        cond_noise_prob: float = 0.5,
         cond_t_min: float = 0.5,
         cond_t_max: float = 1.0,
     ):
@@ -449,7 +612,7 @@ class CausalWan22Core(Wan22Core):
             train_shift=train_shift,
             infer_shift=infer_shift,
             num_train_timesteps=num_train_timesteps,
-            noisy_cond_prob=noisy_cond_prob,
+            cond_noise_prob=cond_noise_prob,
             cond_t_min=cond_t_min,
             cond_t_max=cond_t_max,
         )
@@ -740,7 +903,7 @@ class CausalWan22Core(Wan22Core):
             pred = self.dit.forward_teacher_forcing(
                 noisy_latents=noisy_latents,
                 cond_latents=cond_latents,
-                timestep=timestep_bf,
+                noisy_timestep=timestep_bf,
                 cond_timestep=cond_timestep,
                 context=ctx,
                 context_mask=cmask,
@@ -755,80 +918,82 @@ class CausalWan22Core(Wan22Core):
         return {"video": frames}
 
     def _sample_cond_timestep(
-        self, batch_size: int, device: torch.device, dtype: torch.dtype,
+        self, 
+        batch_size: int, 
+        device: torch.device, 
+        dtype: torch.dtype,
+        cond_t_min: float = 0.0,
+        cond_t_max: float = 1.0,
+        num_train_timesteps: int = 1000,
     ) -> torch.Tensor:
         """Sample conditioning timestep uniformly from [cond_t_min, cond_t_max]."""
         u = torch.rand((batch_size,), device=device, dtype=dtype)
-        u = u * (self.cond_t_max - self.cond_t_min) + self.cond_t_min
-        return u * self.train_scheduler.num_train_timesteps
+        u = u * (cond_t_max - cond_t_min) + cond_t_min
+        return u * num_train_timesteps
 
     def training_loss(self, sample, tiled=False):
         inputs = self.build_inputs(sample, tiled=tiled)
         input_latents = inputs["input_latents"]  # [B, C, F, H, W] clean GT
-        first_frame_latents = inputs["first_frame_latents"]
         context = inputs["context"]
         context_mask = inputs["context_mask"]
 
+        device, dtype = self.device, input_latents.dtype
         batch_size, _, num_frames = input_latents.shape[:3]
-        device = self.device
-        dtype = input_latents.dtype
-        num_train_t = float(self.train_scheduler.num_train_timesteps)
 
-        # 1. Per-frame diffusion timestep [B, F]. Each frame draws its own
-        # t; tokens inside a frame share it.
-        noise = torch.randn_like(input_latents)
-        timestep = self.train_scheduler.sample_training_t(
-            batch_size=batch_size * num_frames,
-            device=device,
-            dtype=dtype,
-        ).reshape(batch_size, num_frames)
-
-        sigma = (timestep.float() / num_train_t).to(dtype).view(batch_size, 1, num_frames, 1, 1)
-        noisy_latents = (1.0 - sigma) * input_latents + sigma * noise
-        target = noise - input_latents  # flow-matching target (timestep-independent)
-
-        # 2. Frame 0 is fixed to the clean input image.
-        if first_frame_latents is not None:
-            noisy_latents[:, :, 0:1] = first_frame_latents
-
-        # 3. Per-sequence independent Bernoulli(noisy_cond_prob) decides
-        # whether each batch element's conditioning latents get noised.
-        noise_mask = torch.rand(batch_size, device=device) < float(self.noisy_cond_prob)
-        cond_timestep = self._sample_cond_timestep(batch_size, device, dtype) * noise_mask.to(dtype)  # [B]
-        cond_sigma = (cond_timestep.float() / num_train_t).to(dtype).view(batch_size, 1, 1, 1, 1)
+        # Branch A: cond video
+        cond_noise_mask = torch.rand((batch_size,), device=self.device) < float(self.cond_noise_prob)
+        cond_timestep = self._sample_cond_timestep(
+            batch_size=batch_size,
+            device=self.device,
+            dtype=input_latents.dtype,
+            cond_t_min=self.cond_t_min,
+            cond_t_max=self.cond_t_max,
+            num_train_timesteps=self.train_scheduler.num_train_timesteps,
+        )
+        cond_timestep = torch.where(
+            cond_noise_mask, cond_timestep, 0.0
+        )
+        cond_timestep = cond_timestep.view(batch_size, 1).expand(batch_size, num_frames).contiguous()
         cond_noise = torch.randn_like(input_latents)
-        cond_latents = (1.0 - cond_sigma) * input_latents + cond_sigma * cond_noise
+        sigma_cond = (cond_timestep.float() / self.train_scheduler.num_train_timesteps).to(dtype).view(batch_size, 1, num_frames, 1, 1)
+        cond_latents = (1.0 - sigma_cond) * input_latents + sigma_cond * cond_noise
+        
+        if inputs["first_frame_latents"] is not None:
+            cond_timestep[:, 0:1] = 0.0
+            cond_latents[:, :, 0:1] = inputs["first_frame_latents"]
 
-        if first_frame_latents is not None:
-            cond_latents[:, :, 0:1] = first_frame_latents
+        # Branch B: noisy video
+        noisy_video_timestep = self.train_scheduler.sample_training_t(
+            batch_size=batch_size * num_frames, 
+            device=device, 
+            dtype=dtype, 
+        ).reshape(batch_size, num_frames)
+        noisy_video_noise = torch.randn_like(input_latents)
+        sigma_video = (noisy_video_timestep.float() / self.train_scheduler.num_train_timesteps).to(dtype).view(batch_size, 1, num_frames, 1, 1)
+        noisy_video_latents = (1.0 - sigma_video) * input_latents + sigma_video * noisy_video_noise
+        target = noisy_video_noise - input_latents
 
-        # forward_teacher_forcing expects [B, F] for both timesteps.
-        cond_timestep_bf = cond_timestep.view(batch_size, 1).expand(batch_size, num_frames)
-
-        # 4. Teacher-forcing forward.
+        if inputs["first_frame_latents"] is not None:
+            noisy_video_timestep[:, 0:1] = 0.0
+            noisy_video_latents[:, :, 0:1] = inputs["first_frame_latents"]
+        
         pred = self.dit.forward_teacher_forcing(
-            noisy_latents=noisy_latents,
+            noisy_latents=noisy_video_latents,
             cond_latents=cond_latents,
-            timestep=timestep,
-            cond_timestep=cond_timestep_bf,
+            noisy_timestep=noisy_video_timestep,
+            cond_timestep=cond_timestep,
             context=context,
             context_mask=context_mask,
         )
 
-        # 5. Loss — drop frame 0 (it's the fixed conditioning image).
-        if first_frame_latents is not None:
+        # drop frame 0 (it's the fixed conditioning image).
+        if inputs["first_frame_latents"] is not None:
             pred = pred[:, :, 1:]
             target = target[:, :, 1:]
-            loss_timestep = timestep[:, 1:]
-        else:
-            loss_timestep = timestep
+            video_loss_timestep = noisy_video_timestep[:, 1:]
 
-        # Per-(batch, frame) MSE: reduce in compute dtype first, then cast
-        # the small [B, F] tensor to fp32 for the weighted mean. Avoids
-        # materializing a full [B, C, F, H, W] fp32 squared-error tensor
-        # under bf16/fp16 autocast.
-        loss_per_bf = (pred - target).pow(2).mean(dim=(1, 3, 4)).float()
-        sample_weight = self.train_scheduler.training_weight(loss_timestep).to(
+        loss_per_bf = (pred.float() - target.float()).pow(2).mean(dim=(1, 3, 4))
+        sample_weight = self.train_scheduler.training_weight(video_loss_timestep).to(
             loss_per_bf.device, dtype=loss_per_bf.dtype
         )
         loss_total = (loss_per_bf * sample_weight).mean()

@@ -11,7 +11,7 @@ infer_shift: 5.0
 num_train_timesteps: 1000
 
 # Teacher-forcing conditioning noise
-noisy_cond_prob: 0.5   # probability of noising conditioning latents
+cond_noise_prob: 0.5   # probability of noising conditioning latents
 cond_t_min: 0.5         # min timestep fraction for conditioning noise
 cond_t_max: 1.0         # max timestep fraction for conditioning noise
 

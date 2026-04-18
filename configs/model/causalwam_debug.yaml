@@ -1,4 +1,4 @@
-_target_: fastwam.runtime.create_causalwam_idm
+_target_: fastwam.runtime.create_causalwam
 model_id: Wan-AI/Wan2.2-TI2V-5B
 tokenizer_model_id: Wan-AI/Wan2.1-T2V-1.3B
 tokenizer_max_len: 128
@@ -9,8 +9,7 @@ mot_checkpoint_mixed_attn: false
 # Debug: skip pretrained DiT weights for both video and action experts.
 action_dit_pretrained_path: null
 skip_dit_load_from_pretrain: true
-use_causal_video_dit: true
-checkpoint_path: null
+video_dit_pretrained_path: null
 
 video_dit_config:
   has_image_input: false
@@ -34,6 +33,11 @@ video_dit_config:
   action_conditioned: false
   action_dim: ${data.train.processor.action_output_dim}
   action_group_causal_mask_mode: "group_diagonal"
+
+cond_config: 
+  video_cond_noise_prob: 0.5
+  video_cond_t_min: 0.5
+  video_cond_t_max: 1.0
 
 action_dit_config:
   action_dim: ${data.train.processor.action_output_dim}
