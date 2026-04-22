@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from typing import Any, Dict, Tuple, Optional
-from einops import rearrange
 from .helpers.gradient import gradient_checkpoint_forward
 
 from fastwam.utils.logging_config import get_logger
@@ -13,11 +12,14 @@ logger = get_logger(__name__)
     
 def flash_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, num_heads: int, ctx_mask: Optional[torch.Tensor] = None, compatibility_mode=True):
     if compatibility_mode:
-        q = rearrange(q, "b s (n d) -> b n s d", n=num_heads)
-        k = rearrange(k, "b s (n d) -> b n s d", n=num_heads)
-        v = rearrange(v, "b s (n d) -> b n s d", n=num_heads)
+        B, S_q, _ = q.shape
+        S_k = k.shape[1]
+        head_dim = q.shape[2] // num_heads
+        q = q.view(B, S_q, num_heads, head_dim).transpose(1, 2)
+        k = k.view(B, S_k, num_heads, head_dim).transpose(1, 2)
+        v = v.view(B, S_k, num_heads, head_dim).transpose(1, 2)
         x = F.scaled_dot_product_attention(q, k, v, attn_mask=ctx_mask)
-        x = rearrange(x, "b n s d -> b s (n d)", n=num_heads)
+        x = x.transpose(1, 2).reshape(B, S_q, -1)
         return x
     else:
         raise NotImplementedError("Only compatibility mode is implemented for flash attention. Please set compatibility_mode=True.")
@@ -53,10 +55,9 @@ def precompute_freqs_cis(dim: int, end: int = 1024, theta: float = 10000.0):
 
 
 def rope_apply(x, freqs, num_heads):
-    x = rearrange(x, "b s (n d) -> b s n d", n=num_heads)
-    x_out = torch.view_as_complex(x.to(torch.float64).reshape(
-        x.shape[0], x.shape[1], x.shape[2], -1, 2))
-    freqs = freqs.to(torch.complex64) if freqs.device.type == "npu" else freqs
+    B, S, D = x.shape
+    x = x.view(B, S, num_heads, -1)
+    x_out = torch.view_as_complex(x.to(torch.float64).reshape(B, S, x.shape[2], -1, 2))
     x_out = torch.view_as_real(x_out * freqs).flatten(2)
     return x_out.to(x.dtype)
 
@@ -408,11 +409,14 @@ class WanVideoDiT(torch.nn.Module):
         return x
 
     def unpatchify(self, x: torch.Tensor, grid_size: torch.Tensor):
-        return rearrange(
-            x, 'b (f h w) (x y z c) -> b c (f x) (h y) (w z)',
-            f=grid_size[0], h=grid_size[1], w=grid_size[2], 
-            x=self.patch_size[0], y=self.patch_size[1], z=self.patch_size[2]
-        )
+        f, h, w = grid_size[0], grid_size[1], grid_size[2]
+        px, py, pz = self.patch_size[0], self.patch_size[1], self.patch_size[2]
+        B = x.shape[0]
+        c = x.shape[-1] // (px * py * pz)
+        x = x.view(B, f, h, w, px, py, pz, c)
+        x = x.permute(0, 7, 1, 4, 2, 5, 3, 6).contiguous()
+        x = x.view(B, c, f * px, h * py, w * pz)
+        return x
 
     def _validate_forward_inputs(
         self,
@@ -597,7 +601,7 @@ class WanVideoDiT(torch.nn.Module):
         else:
             context_mask = context_mask.unsqueeze(1).expand(-1, f * h * w, -1) # (B, seq_len, L)
 
-        x_tokens = rearrange(x, "b c f h w -> b (f h w) c").contiguous()
+        x_tokens = x.permute(0, 2, 3, 4, 1).reshape(x.shape[0], -1, x.shape[1]).contiguous()
 
         freqs = torch.cat([
             self.freqs[0][:f].view(f, 1, 1, -1).expand(f, h, w, -1),

@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import torch
+import nvtx
 from hydra import compose, initialize_config_dir
 from hydra.core.global_hydra import GlobalHydra
 from hydra.utils import instantiate
@@ -184,6 +185,11 @@ class WorldActionRobotWinPolicy:
         self.step_count = 0
         self._timing_rollout = {"infer_s": 0.0, "sim_s": 0.0}
 
+        # Prompt encoding cache (same episode = same prompt)
+        self._cached_prompt: Optional[str] = None
+        self._cached_context: Optional[torch.Tensor] = None
+        self._cached_context_mask: Optional[torch.Tensor] = None
+
         logger.info(
             "Initialized WorldActionRobotWinPolicy | ckpt=%s | stats=%s | horizon=%d | replan=%d",
             checkpoint_path,
@@ -191,6 +197,61 @@ class WorldActionRobotWinPolicy:
             self.action_horizon,
             self.replan_steps,
         )
+
+        # Warmup: trigger torch.compile so compilation cost is not counted in inference timing
+        self._warmup()
+
+    def _warmup(self) -> None:
+        """Run a dummy infer_action call to trigger torch.compile warmup."""
+        logger.info("Starting torch.compile warmup...")
+        warmup_t0 = time.perf_counter()
+
+        # Build dummy inputs matching real inference shapes
+        # Image: [1, 3, 384, 320] (head 256x320 + bottom 128x320)
+        dummy_image = torch.zeros(
+            (1, 3, 384, 320),
+            device=self.model.device,
+            dtype=self.model.torch_dtype,
+        )
+
+        # Encode a dummy prompt for context
+        dummy_prompt = DEFAULT_PROMPT.format(task="warmup")
+        with torch.no_grad():
+            dummy_context, dummy_context_mask = self.model.encode_prompt(dummy_prompt)
+
+        # Proprio: get dimension from model
+        proprio_dim = self.model.proprio_dim
+        if proprio_dim is not None:
+            dummy_proprio = torch.zeros((1, proprio_dim), dtype=torch.float32)
+        else:
+            dummy_proprio = None
+
+        warmup_kwargs = {
+            "prompt": None,
+            "input_image": dummy_image,
+            "action_horizon": self.action_horizon,
+            "proprio": dummy_proprio,
+            "context": dummy_context,
+            "context_mask": dummy_context_mask,
+            "num_inference_steps": self.num_inference_steps,
+            "sigma_shift": self.sigma_shift,
+            "seed": 0,
+            "rand_device": self.rand_device,
+            "tiled": self.tiled,
+        }
+        if "num_video_frames" in inspect.signature(self.model.infer_action).parameters:
+            warmup_kwargs["num_video_frames"] = int(self._num_video_frames)
+
+        with torch.no_grad():
+            self.model.infer_action(**warmup_kwargs)
+
+        # Clear any cached state from warmup
+        self._cached_prompt = None
+        self._cached_context = None
+        self._cached_context_mask = None
+
+        warmup_elapsed = time.perf_counter() - warmup_t0
+        logger.info("torch.compile warmup done in %.2f s", warmup_elapsed)
 
     def _normalize_state(self, state: np.ndarray) -> torch.Tensor:
         state_meta = self.processor.shape_meta["state"]
@@ -239,8 +300,20 @@ class WorldActionRobotWinPolicy:
         proprio = self._normalize_state(state_vector)
 
         prompt = DEFAULT_PROMPT.format(task=instruction)
+
+        # Cache prompt encoding: same prompt → reuse (context, context_mask)
+        if self._cached_prompt == prompt and self._cached_context is not None:
+            context = self._cached_context
+            context_mask = self._cached_context_mask
+        else:
+            with torch.no_grad():
+                context, context_mask = self.model.encode_prompt(prompt)
+            self._cached_prompt = prompt
+            self._cached_context = context
+            self._cached_context_mask = context_mask
+
         infer_kwargs = {
-            "prompt": prompt,
+            "prompt": None,
             "input_image": image_tensor,
             "action_horizon": self.action_horizon,
             "proprio": proprio,
@@ -251,14 +324,20 @@ class WorldActionRobotWinPolicy:
             "seed": self.seed,
             "rand_device": self.rand_device,
             "tiled": self.tiled,
+            "context": context,
+            "context_mask": context_mask,
         }
         if "num_video_frames" in inspect.signature(self.model.infer_action).parameters:
             infer_kwargs["num_video_frames"] = int(self._num_video_frames)
         infer_t0 = time.perf_counter() if self.timing_enabled else 0.0
         with torch.no_grad():
-            pred = self.model.infer_action(**infer_kwargs)
+            with nvtx.annotate("infer_action", color="green"):
+                pred = self.model.infer_action(**infer_kwargs)
         if self.timing_enabled:
-            self._timing_rollout["infer_s"] += time.perf_counter() - infer_t0
+            torch.cuda.synchronize()
+            call_elapsed = time.perf_counter() - infer_t0
+            self._timing_rollout["infer_s"] += call_elapsed
+
 
         action_tensor = pred["action"]  # [T, D]
         action_chunk = self._denormalize_action(action_tensor)[0]  # [T, D]
@@ -309,6 +388,9 @@ class WorldActionRobotWinPolicy:
         self.episode_count += 1
         self.step_count = 0
         self.reset_timing_rollout()
+        self._cached_prompt = None
+        self._cached_context = None
+        self._cached_context_mask = None
 
 
 def encode_obs(observation: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:

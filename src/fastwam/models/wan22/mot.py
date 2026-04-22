@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 import torch
+import torch.cuda.nvtx as nvtx
 import torch.nn as nn
 
 from .wan_video_dit import flash_attention, modulate, rope_apply
@@ -299,6 +300,7 @@ class MoT(nn.Module):
         x = video_tokens
         kv_cache: list[dict[str, torch.Tensor]] = []
         for layer_idx in range(self.num_layers):
+            nvtx.range_push(f"prefill_video_layer_{layer_idx}")
             block = expert.blocks[layer_idx]
             # Build video Q/K/V from current layer input tokens.
             (
@@ -338,7 +340,136 @@ class MoT(nn.Module):
                 context_payload=video_context_payload,
             )
             kv_cache.append({"k": k, "v": v})
+            nvtx.range_pop()  # prefill_video_layer_N
         return kv_cache
+
+    def _prefill_video_cache_inner(
+        self,
+        video_tokens: torch.Tensor,
+        video_freqs: torch.Tensor,
+        video_t_mod: torch.Tensor,
+        video_context_payload: Optional[dict],
+        video_attention_mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, list[torch.Tensor], list[torch.Tensor]]:
+        """Core loop of prefill_video_cache without NVTX or validation.
+
+        Designed to be torch.compile-friendly. Returns flat K/V lists
+        instead of list[dict] to avoid graph breaks.
+
+        NOTE: This method skips gradient checkpointing and is intended
+        for inference only. Do not call during training.
+
+        Returns:
+            (x, cache_k_list, cache_v_list) where each list has num_layers entries.
+        """
+        expert = self.mixtures["video"]
+        x = video_tokens
+        cache_k_list: list[torch.Tensor] = []
+        cache_v_list: list[torch.Tensor] = []
+        for layer_idx in range(self.num_layers):
+            block = expert.blocks[layer_idx]
+            (
+                q, k, v,
+                residual_x, gate_msa,
+                shift_mlp, scale_mlp, gate_mlp,
+                _use_ckpt,
+            ) = self._build_expert_attention_io(
+                expert=expert, block=block, x=x,
+                freqs=video_freqs, t_mod=video_t_mod,
+            )
+            mixed = self._mixed_attention(
+                q_cat=q, k_cat=k, v_cat=v,
+                attention_mask=video_attention_mask,
+            )
+            x = self._apply_expert_post_block(
+                block=block,
+                residual_x=residual_x,
+                mixed_attn_out=mixed,
+                gate_msa=gate_msa,
+                shift_mlp=shift_mlp,
+                scale_mlp=scale_mlp,
+                gate_mlp=gate_mlp,
+                context_payload=video_context_payload,
+            )
+            cache_k_list.append(k)
+            cache_v_list.append(v)
+        return x, cache_k_list, cache_v_list
+
+    def _forward_action_with_video_cache_inner(
+        self,
+        action_tokens: torch.Tensor,
+        action_freqs: torch.Tensor,
+        action_t_mod: torch.Tensor,
+        action_context_payload: Optional[dict],
+        video_cache_k: list[torch.Tensor],
+        video_cache_v: list[torch.Tensor],
+        action_attention_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Core loop of forward_action_with_video_cache without NVTX or validation.
+
+        This method is designed to be torch.compile-friendly. All validation
+        and mask slicing should be done by the caller.
+
+        NOTE: This method skips gradient checkpointing and is intended
+        for inference only. Do not call during training.
+
+        Args:
+            action_tokens: Action tokens before layer 0, shape [B, Sa, D].
+            action_freqs: Action RoPE frequencies, shape [Sa, 1, rope_dim].
+            action_t_mod: Action time modulation tensor.
+            action_context_payload: Optional dict for action cross-attention.
+            video_cache_k: Per-layer cached video keys, length num_layers.
+            video_cache_v: Per-layer cached video values, length num_layers.
+            action_attention_mask: Pre-sliced action rows of the joint mask,
+                shape [Sa, Sv+Sa].
+
+        Returns:
+            Updated action tokens after all layers, shape [B, Sa, D].
+        """
+        expert = self.mixtures["action"]
+        x = action_tokens
+        for layer_idx in range(self.num_layers):
+            block = expert.blocks[layer_idx]
+            (
+                q_action,
+                k_action,
+                v_action,
+                residual_x,
+                gate_msa,
+                shift_mlp,
+                scale_mlp,
+                gate_mlp,
+                use_gradient_checkpointing,
+            ) = self._build_expert_attention_io(
+                expert=expert,
+                block=block,
+                x=x,
+                freqs=action_freqs,
+                t_mod=action_t_mod,
+            )
+            k_video = video_cache_k[layer_idx]
+            v_video = video_cache_v[layer_idx]
+
+            k_cat = torch.cat([k_video, k_action], dim=1)
+            v_cat = torch.cat([v_video, v_action], dim=1)
+            mixed = self._mixed_attention(
+                q_cat=q_action,
+                k_cat=k_cat,
+                v_cat=v_cat,
+                attention_mask=action_attention_mask,
+            )
+            x = self._apply_post_with_optional_checkpoint(
+                block=block,
+                residual_x=residual_x,
+                gate_msa=gate_msa,
+                shift_mlp=shift_mlp,
+                scale_mlp=scale_mlp,
+                gate_mlp=gate_mlp,
+                use_gradient_checkpointing=use_gradient_checkpointing,
+                mixed_slice=mixed,
+                context_payload=action_context_payload,
+            )
+        return x
 
     def forward_action_with_video_cache(
         self,
@@ -384,37 +515,13 @@ class MoT(nn.Module):
                 "`attention_mask` seq length mismatch: "
                 f"mask={attention_mask.shape[0]} vs expected_total={total_seq_len}"
             )
-        # Use the action query rows from the joint [video+action] mask.
-        action_attention_mask = attention_mask[video_seq_len:total_seq_len, :total_seq_len]
 
-        expert = self.mixtures["action"]
-        x = action_tokens
         for layer_idx in range(self.num_layers):
-            block = expert.blocks[layer_idx]
-            # Action query/key/value are still step-dependent and must be recomputed each step.
-            (
-                q_action,
-                k_action,
-                v_action,
-                residual_x,
-                gate_msa,
-                shift_mlp,
-                scale_mlp,
-                gate_mlp,
-                use_gradient_checkpointing,
-            ) = self._build_expert_attention_io(
-                expert=expert,
-                block=block,
-                x=x,
-                freqs=action_freqs,
-                t_mod=action_t_mod,
-            )
             layer_cache = video_kv_cache[layer_idx]
             if "k" not in layer_cache or "v" not in layer_cache:
                 raise ValueError(
                     f"`video_kv_cache[{layer_idx}]` must contain `k` and `v`."
                 )
-
             k_video = layer_cache["k"]
             v_video = layer_cache["v"]
             if k_video.shape[1] != video_seq_len or v_video.shape[1] != video_seq_len:
@@ -422,27 +529,22 @@ class MoT(nn.Module):
                     f"`video_kv_cache[{layer_idx}]` seq len mismatch, expected {video_seq_len}."
                 )
 
-            # Mixed attention: action queries attend to cached video K/V plus current action K/V.
-            k_cat = torch.cat([k_video, k_action], dim=1)
-            v_cat = torch.cat([v_video, v_action], dim=1)
-            mixed = self._mixed_attention(
-                q_cat=q_action,
-                k_cat=k_cat,
-                v_cat=v_cat,
-                attention_mask=action_attention_mask,
-            )
-            x = self._apply_post_with_optional_checkpoint(
-                block=block,
-                residual_x=residual_x,
-                gate_msa=gate_msa,
-                shift_mlp=shift_mlp,
-                scale_mlp=scale_mlp,
-                gate_mlp=gate_mlp,
-                use_gradient_checkpointing=use_gradient_checkpointing,
-                mixed_slice=mixed,
-                context_payload=action_context_payload,
-            )
-        return x
+        # Pre-slice mask outside compiled region
+        action_attention_mask = attention_mask[video_seq_len:total_seq_len, :total_seq_len]
+
+        # Extract flat lists for compile-friendly inner method
+        video_cache_k = [layer_cache["k"] for layer_cache in video_kv_cache]
+        video_cache_v = [layer_cache["v"] for layer_cache in video_kv_cache]
+
+        return self._forward_action_with_video_cache_inner(
+            action_tokens=action_tokens,
+            action_freqs=action_freqs,
+            action_t_mod=action_t_mod,
+            action_context_payload=action_context_payload,
+            video_cache_k=video_cache_k,
+            video_cache_v=video_cache_v,
+            action_attention_mask=action_attention_mask,
+        )
 
     def forward(
         self,

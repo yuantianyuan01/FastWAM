@@ -1,6 +1,7 @@
 from typing import Any, Optional, Sequence, Union
 
 import torch
+import torch.cuda.nvtx as nvtx
 import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
@@ -11,6 +12,7 @@ from .action_dit import ActionDiT
 from .helpers.loader import load_wan22_ti2v_5b_components
 from .mot import MoT
 from .schedulers.scheduler_continuous import WanContinuousFlowMatchScheduler
+from .wan_video_dit import sinusoidal_embedding_1d
 
 logger = get_logger(__name__)
 
@@ -702,12 +704,15 @@ class FastWAM(torch.nn.Module):
         attention_mask: torch.Tensor,
         video_seq_len: int,
     ) -> torch.Tensor:
+        nvtx.range_push("action_expert.pre_dit")
         action_pre = self.action_expert.pre_dit(
             action_tokens=latents_action,
             timestep=timestep_action,
             context=context,
             context_mask=context_mask,
         )
+        nvtx.range_pop()  # action_expert.pre_dit
+        nvtx.range_push("mot.forward_action_with_video_cache")
         action_tokens = self.mot.forward_action_with_video_cache(
             action_tokens=action_pre["tokens"],
             action_freqs=action_pre["freqs"],
@@ -720,7 +725,97 @@ class FastWAM(torch.nn.Module):
             attention_mask=attention_mask,
             video_seq_len=video_seq_len,
         )
-        return self.action_expert.post_dit(action_tokens, action_pre)
+        nvtx.range_pop()  # mot.forward_action_with_video_cache
+        nvtx.range_push("action_expert.post_dit")
+        result = self.action_expert.post_dit(action_tokens, action_pre)
+        nvtx.range_pop()  # action_expert.post_dit
+        return result
+
+    def _prefill_step_compiled(
+        self,
+        video_tokens: torch.Tensor,
+        video_freqs: torch.Tensor,
+        video_t_mod: torch.Tensor,
+        video_context: torch.Tensor,
+        video_context_mask: torch.Tensor,
+        video_attention_mask: torch.Tensor,
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+        """Prefill video cache: compile-friendly version.
+
+        Inlines the MoT prefill inner loop. Designed for torch.compile wrapping.
+        Returns flat (cache_k_list, cache_v_list) to avoid dict graph breaks.
+        """
+        video_context_payload = {
+            "context": video_context,
+            "mask": video_context_mask,
+        }
+        _x, cache_k_list, cache_v_list = self.mot._prefill_video_cache_inner(
+            video_tokens=video_tokens,
+            video_freqs=video_freqs,
+            video_t_mod=video_t_mod,
+            video_context_payload=video_context_payload,
+            video_attention_mask=video_attention_mask,
+        )
+        return cache_k_list, cache_v_list
+
+    def _denoise_step_compiled(
+        self,
+        latents_action: torch.Tensor,
+        timestep_action: torch.Tensor,
+        context: torch.Tensor,
+        context_mask: torch.Tensor,
+        video_cache_k: list[torch.Tensor],
+        video_cache_v: list[torch.Tensor],
+        action_attention_mask: torch.Tensor,
+        action_freqs: torch.Tensor,
+    ) -> torch.Tensor:
+        """Single denoise step combining pre_dit + MoT inner loop + post_dit.
+
+        This method is designed to be wrapped with torch.compile. It avoids
+        NVTX calls, dict intermediates, and validation checks.
+
+        Args:
+            latents_action: Noisy action latents, shape [B, T, action_dim].
+            timestep_action: Timestep tensor, shape [B].
+            context: Raw text context (before text_embedding), shape [B, L, text_dim].
+            context_mask: Context mask, shape [B, L].
+            video_cache_k: Per-layer cached video keys from prefill, length num_layers.
+            video_cache_v: Per-layer cached video values from prefill, length num_layers.
+            action_attention_mask: Pre-sliced action attention mask, shape [Sa, Sv+Sa].
+            action_freqs: Pre-computed action RoPE frequencies, shape [Sa, 1, rope_dim].
+
+        Returns:
+            Predicted action noise, shape [B, T, action_dim].
+        """
+        # --- Inline action_expert.pre_dit core (mirrors ActionDiT.pre_dit) ---
+        ae = self.action_expert
+        t = ae.time_embedding(
+            sinusoidal_embedding_1d(ae.freq_dim, timestep_action)
+        )
+        t_mod = ae.time_projection(t).unflatten(1, (6, ae.hidden_dim))
+
+        tokens = ae.action_encoder(latents_action)
+        seq_len = tokens.shape[1]
+        context_emb = ae.text_embedding(context)
+        context_attn_mask = context_mask.unsqueeze(1).expand(-1, seq_len, -1)
+
+        # --- MoT inner loop (no NVTX, no validation) ---
+        action_context_payload = {
+            "context": context_emb,
+            "mask": context_attn_mask,
+        }
+        tokens = self.mot._forward_action_with_video_cache_inner(
+            action_tokens=tokens,
+            action_freqs=action_freqs,
+            action_t_mod=t_mod,
+            action_context_payload=action_context_payload,
+            video_cache_k=video_cache_k,
+            video_cache_v=video_cache_v,
+            action_attention_mask=action_attention_mask,
+        )
+
+        # --- Inline action_expert.post_dit (mirrors ActionDiT.post_dit) ---
+        return ae.head(tokens)
 
     @torch.no_grad()
     def infer_joint(
@@ -949,6 +1044,8 @@ class FastWAM(torch.nn.Module):
                 raise ValueError(f"`proprio` last dim must be {self.proprio_dim}, got {proprio.shape[1]}")
             proprio = proprio.to(device=self.device, dtype=self.torch_dtype)
 
+        nvtx.range_push("infer_action")
+
         generator = None if seed is None else torch.Generator(device=rand_device).manual_seed(seed)
         latents_action = torch.randn(
             (1, action_horizon, self.action_expert.action_dim),
@@ -958,7 +1055,9 @@ class FastWAM(torch.nn.Module):
         ).to(device=self.device, dtype=self.torch_dtype)
 
         input_image = input_image.to(device=self.device, dtype=self.torch_dtype)
+        nvtx.range_push("encode_input_image (VAE)")
         first_frame_latents = self._encode_input_image_latents_tensor(input_image=input_image, tiled=tiled)
+        nvtx.range_pop()
         fuse_flag = bool(getattr(self.video_expert, "fuse_vae_embedding_in_latents", False))
 
         use_prompt = prompt is not None
@@ -969,7 +1068,9 @@ class FastWAM(torch.nn.Module):
             raise ValueError("Either `prompt` or both `context/context_mask` must be provided.")
 
         if use_prompt:
+            nvtx.range_push("encode_prompt (text)")
             context, context_mask = self.encode_prompt(prompt)
+            nvtx.range_pop()
         else:
             if context is None or context_mask is None:
                 raise ValueError("`context` and `context_mask` must be both provided together.")
@@ -984,12 +1085,15 @@ class FastWAM(torch.nn.Module):
             context = context.to(device=self.device, dtype=self.torch_dtype, non_blocking=True)
             context_mask = context_mask.to(device=self.device, dtype=torch.bool, non_blocking=True)
         if proprio is not None:
+            nvtx.range_push("append_proprio_to_context")
             context, context_mask = self._append_proprio_to_context(
                 context=context,
                 context_mask=context_mask,
                 proprio=proprio,
             )
+            nvtx.range_pop()
 
+        nvtx.range_push("video_expert.pre_dit (prefill)")
         timestep_video = torch.zeros(
             (first_frame_latents.shape[0],),
             dtype=first_frame_latents.dtype,
@@ -1003,23 +1107,53 @@ class FastWAM(torch.nn.Module):
             action=None,
             fuse_vae_embedding_in_latents=fuse_flag,
         )
+        nvtx.range_pop()  # video_expert.pre_dit (prefill)
         video_seq_len = int(video_pre["tokens"].shape[1])
+        nvtx.range_push("build_mot_attention_mask")
         attention_mask = self._build_mot_attention_mask(
             video_seq_len=video_seq_len,
             action_seq_len=latents_action.shape[1],
             video_tokens_per_frame=int(video_pre["meta"]["tokens_per_frame"]),
             device=video_pre["tokens"].device,
         )
-        video_kv_cache = self.mot.prefill_video_cache(
+        nvtx.range_pop()  # build_mot_attention_mask
+        nvtx.range_push("mot.prefill_video_cache")
+        # Lazy compile prefill (inductor fusion, not reduce-overhead since it runs once)
+        if not hasattr(self, '_prefill_step_is_compiled'):
+            if self.device.type == 'cuda':
+                self._prefill_step_compiled = torch.compile(
+                    self._prefill_step_compiled,
+                    mode="default",
+                    fullgraph=False,
+                )
+            self._prefill_step_is_compiled = True
+
+        video_attention_mask_slice = attention_mask[:video_seq_len, :video_seq_len]
+        cache_k_list, cache_v_list = self._prefill_step_compiled(
             video_tokens=video_pre["tokens"],
             video_freqs=video_pre["freqs"],
             video_t_mod=video_pre["t_mod"],
-            video_context_payload={
-                "context": video_pre["context"],
-                "mask": video_pre["context_mask"],
-            },
-            video_attention_mask=attention_mask[:video_seq_len, :video_seq_len],
+            video_context=video_pre["context"],
+            video_context_mask=video_pre["context_mask"],
+            video_attention_mask=video_attention_mask_slice,
         )
+        nvtx.range_pop()  # mot.prefill_video_cache
+
+        # Pre-compute action freqs and attention mask slice (outside compiled region)
+        action_seq_len = latents_action.shape[1]
+        action_freqs = self.action_expert.freqs[:action_seq_len].view(action_seq_len, 1, -1).to(latents_action.device)
+        total_seq_len = video_seq_len + action_seq_len
+        action_attention_mask = attention_mask[video_seq_len:total_seq_len, :total_seq_len]
+
+        # Lazy torch.compile wrapper
+        if not hasattr(self, '_denoise_step_is_compiled'):
+            if self.device.type == 'cuda':
+                self._denoise_step_compiled = torch.compile(
+                    self._denoise_step_compiled,
+                    mode="reduce-overhead",
+                    fullgraph=False,
+                )
+            self._denoise_step_is_compiled = True
 
         infer_timesteps_action, infer_deltas_action = self.infer_action_scheduler.build_inference_schedule(
             num_inference_steps=num_inference_steps,
@@ -1027,22 +1161,29 @@ class FastWAM(torch.nn.Module):
             dtype=latents_action.dtype,
             shift_override=sigma_shift,
         )
-        for step_t_action, step_delta_action in zip(infer_timesteps_action, infer_deltas_action):
+        nvtx.range_push("action_denoise_loop")
+        for step_idx, (step_t_action, step_delta_action) in enumerate(zip(infer_timesteps_action, infer_deltas_action)):
+            nvtx.range_push(f"denoise_step_{step_idx}")
             timestep_action = step_t_action.unsqueeze(0).to(dtype=latents_action.dtype, device=self.device)
 
-            pred_action_posi = self._predict_action_noise_with_cache(
+            pred_action = self._denoise_step_compiled(
                 latents_action=latents_action,
                 timestep_action=timestep_action,
                 context=context,
                 context_mask=context_mask,
-                video_kv_cache=video_kv_cache,
-                attention_mask=attention_mask,
-                video_seq_len=video_seq_len,
+                video_cache_k=cache_k_list,
+                video_cache_v=cache_v_list,
+                action_attention_mask=action_attention_mask,
+                action_freqs=action_freqs,
             )
-            pred_action = pred_action_posi
 
+            nvtx.range_push("scheduler_step")
             latents_action = self.infer_action_scheduler.step(pred_action, step_delta_action, latents_action)
+            nvtx.range_pop()  # scheduler_step
+            nvtx.range_pop()  # denoise_step_N
 
+        nvtx.range_pop()  # action_denoise_loop
+        nvtx.range_pop()  # infer_action
         return {
             "action": latents_action[0].detach().to(device="cpu", dtype=torch.float32),
         }
