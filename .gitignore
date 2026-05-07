@@ -2,11 +2,13 @@
 # Misc
 outputs/
 checkpoints
-data/*
+data
+data/
 apex/
 assets/
 runs
 runs/
+evaluate_results
 evaluate_results/
 .deepspeed*
 
