@@ -265,7 +265,93 @@ MoT 的混合 attention（每层）复杂度近似与 `S_total^2` 成正比，�
 - 输出：`vfar_tokens: [B,8,4096]`
 - 参考：[VFaRPerceiverEncoder](file:///home/sxy/embodied-ai/FastWAM/src/fastwam/models/wan22/fastwam.py)
 
-这意味着当前版本的 decoder **完全丢弃了 3D 空间拓扑**（与论文草案中“保留体素拓扑 + cross-attn 压缩”的设计不同）。它的主要价值在于先把训练/冻结/接口打通。
+### 4.4.4 VFaR 提取时对“首帧硬条件”的处理（已实现）
+
+当 `video_expert.fuse_vae_embedding_in_latents=true` 时，Wan 的 I2V 接口语义是“首帧作为硬条件锚点”。  
+因此在提取 `t=1.0` 纯噪声端点的 VFaR 时，当前实现会：
+
+- 先按 scheduler 把 `input_latents` 加噪到 `x_t`
+- 然后将 `x_t[:,:,0:1]` 强行替换回 `first_frame_latents`（如果存在）
+
+这样可以保证“纯噪声端点 + 首帧锚点”同时成立，避免首帧也被噪声破坏。
+
+- 参考：[FastWAM._compute_vfar_tokens](file:///home/sxy/embodied-ai/FastWAM/src/fastwam/models/wan22/fastwam.py#L341-L370)
+
+---
+
+## 5. 当前需要确认的两项实验性检查（已跑通 Dummy）
+
+### 5.1 Dummy forward：确认新增结构与数据流 I/O
+
+在不依赖真实 Wan 权重/真实 dataset 的前提下，用 Dummy VAE + Dummy video expert 验证 action-only 路径：
+
+- `train_mode=action_only_vfar` 能正常走通
+- `vfar_tokens.shape == [B, 8, 4096]`（与 context 对齐）
+- `loss.backward()` 后只有 `vfar_decoder + action_expert` 有梯度
+
+一次运行结果示例（B=2）：
+- `vfar_tokens.shape: (2, 8, 4096)`
+- `requires_grad(video_expert)=False, requires_grad(vae)=False`
+- `requires_grad(action_expert)=True, requires_grad(vfar_decoder)=True`
+
+### 5.2 训练时是否“冻结 Wan 只训 decoder+action DiT”
+
+结论：当前实现满足“冻结 Wan，只训练 decoder + action expert”的梯度边界：
+- `freeze_wan=true` 会对 `video_expert/vae/text_encoder` 执行 `eval()` + `requires_grad_(False)`
+- trainer 在 `train_mode=action_only_vfar` 时只将 `action_expert + vfar_decoder (+ proprio_encoder 可选)` 加入 optimizer
+
+注意：要在 LIBERO 上真正启动训练进程，需要先把 `data/libero_mujoco3.3.2/...` 数据放到 `FastWAM/data` 指向的目录中（当前 data 目录为空）。
+
+---
+
+## 6. 改进想法：Adapter Decoder（从 Wan DiT 多层中间特征提取 VFaR）
+
+当前 VFaR 直接使用 `pred_vfar`（最终输出速度场/噪声预测）。它的优点是物理意义明确、与 Rectified Flow 目标一致；但也可能存在两个局限：
+- 输出空间受 VAE latent 表达约束，可能缺少更高层的语义/结构信息
+- 单一输出可能在某些任务上不足以提供多尺度的“可操作性”线索
+
+### 6.1 可行的 Adapter 设计空间
+
+- **Layer feature adapter（取若干层的 token 激活）**
+  - 从 Wan video DiT 的若干 block 输出中取 `h_l: [B,Sv,3072]`
+  - 对每层做 `proj_l: 3072 -> d`，再做 pooling/perceiver 压缩到 `K` 个 token
+
+- **Learned layer mixing（跨层加权/注意力融合）**
+  - 学习一组层权重 `α_l`（softmax 归一）做 `h_mix = Σ α_l * h_l`
+  - 或者对每个 token 做 gating：`α_l(token)`（更强但更贵）
+
+- **Multi-scale tokens（浅层+深层同时保留）**
+  - 浅层更偏纹理/局部几何，深层更偏语义/动作相关部位
+  - 可以输出 `K1+K2` 个 token：例如 `K=8` 由 4 个浅层 token + 4 个深层 token 组成
+
+- **Prediction + feature hybrid（输出+中间特征结合）**
+  - 将 `pred_vfar`（物理速度场）作为“几何/动力学先验”
+  - 同时附加中间层 `h_l`（语义/注意力聚合）作为“任务意图先验”
+
+### 6.2 在本代码库里怎么落地（接口与改动点）
+
+要实现中间层提取，需要让 Wan video expert 能“返回中间层特征”。建议路径：
+- 在 `WanVideoDiT.forward(...)` 增加可选参数，例如：
+  - `return_intermediates: bool`
+  - `intermediate_layers: list[int]`
+  - 返回 `pred` 的同时返回 `hidden_states: dict[layer_idx] = [B,Sv,3072]`
+- 在 `FastWAM._compute_vfar_tokens` 中增加分支：
+  - `source: pred`（现状）
+  - `source: hidden_states`（走 adapter decoder）
+  - `source: mixed`（pred + hidden 融合）
+
+### 6.3 风险与成本（建议提前规避）
+
+- **显存风险**：如果要返回多个层的 `hidden_states`，即使 Wan forward 用 `no_grad`，保存大 tensor 也会占显存/内存；建议只取 1~4 个层，并尽量在线聚合（例如只保存 `h_mix`）。
+- **时序/分辨率对齐**：`Sv` 取决于 `F,H_lat,W_lat`，adapter 应优先使用 `AdaptivePool` 让输出 token 数固定，避免写死魔数。
+- **与“首帧硬条件”的一致性**：如果输入是 `t=1` 端点，仍需保持首帧锚点（当前已实现），否则中间特征会失去空间 anchor。
+
+### 6.4 推荐的最小 Adapter MVP（低风险）
+
+先做一个最小实验版本验证价值：
+- 只取 2 个层：`l_low`（如 5）+ `l_high`（如 25）
+- 各自 `proj: 3072 -> 256`，各自走同一个 `VFaRPerceiverEncoder` 压缩成 `4` 个 token
+- 拼成 `8` 个 token（维度仍映射到 4096），保持下游 ActionDiT 接口不变
 
 ### 4.4.4 action-only 数据流（已实现）
 
@@ -308,3 +394,211 @@ MoT 的混合 attention（每层）复杂度近似与 `S_total^2` 成正比，�
 - VAE `temporal_downsample_factor=4`，因此 latent 帧数 `F=3`
 
 也就是说：Wan video DiT 实际处理的是 `3` 帧 latent 的短序列（而不是 9 帧像素序列），这会显著影响你对“固定 timestep O1 的信息量”的直觉，以及 decoder 需要处理的时空结构规模。
+
+---
+
+## 7. Step-2：LIBERO 训练前的准备与一次最小训练验证（建议照做）
+
+下面目标是跑通两件事：
+- dataset + text embedding cache 完整可用（RobotVideoDataset 不会因为缺 cache 报错）
+- `train_mode=action_only_vfar` 时确实冻结 Wan，只训练 `vfar_decoder + action_expert`
+
+### 7.1 数据集下载与解压（LIBERO-fastwam）
+
+按 FastWAM 的 dataset 约定，目录最终需要是：
+
+`data/libero_mujoco3.3.2/{libero_10_no_noops_lerobot,libero_goal_no_noops_lerobot,libero_object_no_noops_lerobot,libero_spatial_no_noops_lerobot}`
+
+推荐把大文件放到盘上目录，并让仓库的 `data/` 软链接指过去（例如你使用 `/data-ex/home/sxy/fastwam_assets/data`）。
+
+```bash
+cd /home/sxy/embodied-ai/FastWAM
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate fastwam
+
+ASSET_ROOT=/data-ex/home/sxy/fastwam_assets
+mkdir -p "$ASSET_ROOT"/{raw,cache,data}
+
+export HF_HOME="$ASSET_ROOT/cache/huggingface"
+export HF_HUB_ENABLE_HF_TRANSFER=1
+
+# 下载 4 个 tar.gz 到 raw/libero
+mkdir -p "$ASSET_ROOT/raw/libero"
+huggingface-cli download yuanty/LIBERO-fastwam --repo-type dataset \
+  --local-dir "$ASSET_ROOT/raw/libero"
+
+# 解压到 data/libero_mujoco3.3.2
+mkdir -p "$ASSET_ROOT/data/libero_mujoco3.3.2"
+cd "$ASSET_ROOT/data/libero_mujoco3.3.2"
+for f in "$ASSET_ROOT/raw/libero"/*.tar.gz; do tar -xzf "$f"; done
+```
+
+### 7.1.1 RoboTwin 数据集下载与解压（robotwin2.0-fastwam）
+
+按 FastWAM 的 dataset 约定，目录最终需要是：
+
+`data/robotwin2.0/robotwin2.0/{data,meta,videos}`
+
+下载与解压：
+
+```bash
+cd /home/sxy/embodied-ai/FastWAM
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate fastwam
+
+ASSET_ROOT=/data-ex/home/sxy/fastwam_assets
+mkdir -p "$ASSET_ROOT"/{raw,cache,data}
+
+export HF_HOME="$ASSET_ROOT/cache/huggingface"
+export HF_HUB_ENABLE_HF_TRANSFER=1
+
+mkdir -p "$ASSET_ROOT/raw/robotwin2.0"
+huggingface-cli download yuanty/robotwin2.0-fastwam --repo-type dataset \
+  --local-dir "$ASSET_ROOT/raw/robotwin2.0"
+
+mkdir -p "$ASSET_ROOT/data/robotwin2.0"
+cd "$ASSET_ROOT/data/robotwin2.0"
+cat "$ASSET_ROOT/raw/robotwin2.0"/robotwin2.0.tar.gz.part-* | tar -xzf -
+```
+
+另外，`configs/data/robotwin.yaml` 默认使用：
+`./data/robotwin2.0/dataset_stats.json`
+作为 normalization 统计文件；可直接下载官方 release 的 stats 放到该路径（下一节给命令）。
+
+### 7.2 文本 embedding cache 预计算（必须，否则 dataset 直接报错）
+
+RobotVideoDataset 在取样时会读取：
+`data/text_embeds_cache/libero/*.t5_len128.wan22ti2v5b.pt`
+如果不存在会直接抛 `FileNotFoundError`。
+
+```bash
+cd /home/sxy/embodied-ai/FastWAM
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate fastwam
+
+export DIFFSYNTH_MODEL_BASE_PATH=/home/sxy/embodied-ai/models
+
+python scripts/precompute_text_embeds.py \
+  data=libero_2cam \
+  model=fastwam \
+  +overwrite=true
+```
+
+#### 7.2.1 如果本机已有 Wan2.2 5B 权重：用软链接复用（推荐）
+
+如果你已经在本地有完整的 `Wan2.2-TI2V-5B` 权重目录（例如：`/home/sxy/Wan2.2/models/Wan2.2-TI2V-5B`），建议直接把它软链接到 `DIFFSYNTH_MODEL_BASE_PATH` 期望的位置，避免重复下载与缓存冲突：
+
+```bash
+mkdir -p /home/sxy/embodied-ai/models/Wan-AI
+
+# 若目标已存在且不是软链接，先备份再链接
+if [ -e /home/sxy/embodied-ai/models/Wan-AI/Wan2.2-TI2V-5B ] && [ ! -L /home/sxy/embodied-ai/models/Wan-AI/Wan2.2-TI2V-5B ]; then
+  mv /home/sxy/embodied-ai/models/Wan-AI/Wan2.2-TI2V-5B \
+     /home/sxy/embodied-ai/models/Wan-AI/Wan2.2-TI2V-5B.bak_$(date +%Y%m%d_%H%M%S)
+fi
+
+ln -sfn /home/sxy/Wan2.2/models/Wan2.2-TI2V-5B \
+       /home/sxy/embodied-ai/models/Wan-AI/Wan2.2-TI2V-5B
+```
+
+如果你遇到 huggingface 的提示：
+`Still waiting to acquire lock ... .lock`
+通常原因是**另一个 huggingface-cli 进程正在下载同一个文件**；确认没有相关进程后，可以删除对应 `.lock` 文件并重试。
+
+#### 7.2.2 RoboTwin 的 text embedding cache
+
+RoboTwin 对应的 cache 默认目录是：
+`data/text_embeds_cache/robotwin`
+
+```bash
+cd /home/sxy/embodied-ai/FastWAM
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate fastwam
+
+export DIFFSYNTH_MODEL_BASE_PATH=/home/sxy/embodied-ai/models
+
+python scripts/precompute_text_embeds.py \
+  data=robotwin \
+  model=fastwam \
+  +overwrite=true
+```
+
+### 7.3 Model Preparation：预生成 ActionDiT backbone（与 FastWAM 对齐建议做）
+
+这一步会从 Wan22 DiT 插值得到 ActionDiT backbone 初始化权重（用于训练更稳定、对齐官方设置）。
+
+```bash
+cd /home/sxy/embodied-ai/FastWAM
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate fastwam
+
+export DIFFSYNTH_MODEL_BASE_PATH=/home/sxy/embodied-ai/models
+
+python scripts/preprocess_action_dit_backbone.py \
+  --model-config configs/model/fastwam.yaml \
+  --output checkpoints/ActionDiT_linear_interp_Wan22_alphascale_1024hdim.pt \
+  --device cuda \
+  --dtype bfloat16
+```
+
+注意：该脚本需要 CUDA 驱动与可用 GPU；若机器上 `torch.cuda.is_available()` 为 False，需要先把 NVIDIA driver / CUDA 环境修好再跑。
+
+### 7.3.1 可选：下载官方 release 的权重（LIBERO / RoboTwin）
+
+如果你想先对齐官方 inference/eval（或复用 stats），可以下载 release checkpoints：
+
+```bash
+cd /home/sxy/embodied-ai/FastWAM
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate fastwam
+
+ASSET_ROOT=/data-ex/home/sxy/fastwam_assets
+mkdir -p "$ASSET_ROOT/checkpoints/fastwam_release"
+
+huggingface-cli download yuanty/fastwam \
+  libero_uncond_2cam224.pt \
+  libero_uncond_2cam224_dataset_stats.json \
+  robotwin_uncond_3cam_384.pt \
+  robotwin_uncond_3cam_384_dataset_stats.json \
+  --local-dir "$ASSET_ROOT/checkpoints/fastwam_release"
+```
+
+其中 RoboTwin stats 建议额外放一份到 `data/robotwin2.0/dataset_stats.json`（以满足默认 config）：
+
+```bash
+cp "$ASSET_ROOT/checkpoints/fastwam_release/robotwin_uncond_3cam_384_dataset_stats.json" \
+   "$ASSET_ROOT/data/robotwin2.0/dataset_stats.json"
+```
+
+### 7.4 启动一次最小训练（max_steps=1）验证“冻结 Wan 只训 decoder+ActionDiT”
+
+```bash
+cd /home/sxy/embodied-ai/FastWAM
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate fastwam
+
+export DIFFSYNTH_MODEL_BASE_PATH=/home/sxy/embodied-ai/models
+
+python scripts/train.py \
+  data=libero_2cam \
+  model=fastwam \
+  batch_size=1 num_workers=0 \
+  max_steps=1 log_every=1 \
+  wandb.enabled=false
+```
+
+验证点（观察日志/或直接在 trainer 里打断点看 optimizer 参数）：
+- `video_expert/vae/text_encoder`：`requires_grad=False`
+- optimizer param group 只包含：`vfar_decoder + action_expert (+ proprio_encoder 可选)`
+
+---
+
+## 8. 单模型多任务 vs 单任务多模型：当前版本的结论
+
+你在 1D U-Net 的 DP 版本里“每个 task 训练一个模型”的根因是：**策略缺少语言条件**，所以只能靠“数据集选择/单任务训练”来指定目标。
+
+本仓库当前的 action-only + VFaR 版本结论是：
+- **支持训练一个模型覆盖多个任务（结论：是）**：数据集每条 sample 都带 `instruction`，并且会读取对应的 `context/context_mask`（T5 embedding cache）。ActionDiT 的去噪预测显式以 `context` 为条件，因此同一套权重可以在训练时学习“语言条件下的多任务映射”。
+- **是否“真的能在 LIBERO/RoboTwin 上用一个模型覆盖所有任务”取决于训练数据与采样策略**：
+  - 如果训练数据目录包含多个任务（例如 LIBERO 的四个 suite 目录同时喂进来），训练出的就是多任务模型。
+  - 如果你只想做单任务训练，既可以只喂某个 task 的子集，也可以使用数据侧的过滤/override（例如 `override_instruction`）来退化成“单任务多模型”。

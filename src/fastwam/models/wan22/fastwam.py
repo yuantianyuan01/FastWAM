@@ -341,6 +341,7 @@ class FastWAM(torch.nn.Module):
     def _compute_vfar_tokens(
         self,
         input_latents: torch.Tensor,
+        first_frame_latents: Optional[torch.Tensor],
         context: torch.Tensor,
         context_mask: torch.Tensor,
         fuse_vae_embedding_in_latents: bool,
@@ -351,6 +352,12 @@ class FastWAM(torch.nn.Module):
         timestep_vfar = self._get_vfar_timestep(batch_size=batch_size, dtype=input_latents.dtype, device=input_latents.device)
         noise = torch.randn_like(input_latents)
         latents_vfar = self.train_video_scheduler.add_noise(input_latents, noise, timestep_vfar)
+        if fuse_vae_embedding_in_latents and first_frame_latents is not None:
+            if first_frame_latents.ndim != 5:
+                raise ValueError(
+                    f"`first_frame_latents` must be 5D [B,C,1,H,W], got shape {tuple(first_frame_latents.shape)}"
+                )
+            latents_vfar[:, :, 0:1] = first_frame_latents.to(device=latents_vfar.device, dtype=latents_vfar.dtype)
         with torch.no_grad():
             pred_vfar = self.video_expert(
                 x=latents_vfar,
@@ -762,6 +769,7 @@ class FastWAM(torch.nn.Module):
             raise ValueError("`vfar_decoder` is required for `train_mode=action_only_vfar`.")
         vfar_tokens = self._compute_vfar_tokens(
             input_latents=input_latents,
+            first_frame_latents=inputs.get("first_frame_latents"),
             context=context,
             context_mask=context_mask,
             fuse_vae_embedding_in_latents=inputs["fuse_vae_embedding_in_latents"],
