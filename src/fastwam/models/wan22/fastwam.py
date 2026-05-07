@@ -15,6 +15,88 @@ from .schedulers.scheduler_continuous import WanContinuousFlowMatchScheduler
 logger = get_logger(__name__)
 
 
+class VFaRPerceiverEncoder(nn.Module):
+    def __init__(
+        self,
+        in_channels: int = 48,
+        latent_dim: int = 256,
+        num_latents: int = 8,
+        num_heads: int = 8,
+        pool_t: int = 3,
+        pool_h: int = 2,
+        pool_w: int = 2,
+        out_token_dim: int = 4096,
+    ):
+        super().__init__()
+        self.in_channels = int(in_channels)
+        self.latent_dim = int(latent_dim)
+        self.num_latents = int(num_latents)
+        self.num_heads = int(num_heads)
+        self.pool_t = int(pool_t)
+        self.pool_h = int(pool_h)
+        self.pool_w = int(pool_w)
+        self.out_token_dim = int(out_token_dim)
+
+        if self.in_channels <= 0:
+            raise ValueError(f"`in_channels` must be > 0, got {self.in_channels}")
+        if self.latent_dim <= 0:
+            raise ValueError(f"`latent_dim` must be > 0, got {self.latent_dim}")
+        if self.num_latents <= 0:
+            raise ValueError(f"`num_latents` must be > 0, got {self.num_latents}")
+        if self.num_heads <= 0:
+            raise ValueError(f"`num_heads` must be > 0, got {self.num_heads}")
+        if self.pool_t <= 0 or self.pool_h <= 0 or self.pool_w <= 0:
+            raise ValueError(
+                f"`pool_t/pool_h/pool_w` must be > 0, got {(self.pool_t, self.pool_h, self.pool_w)}"
+            )
+        if self.out_token_dim <= 0:
+            raise ValueError(f"`out_token_dim` must be > 0, got {self.out_token_dim}")
+
+        self.channel_proj = nn.Conv3d(self.in_channels, self.latent_dim, kernel_size=1, stride=1, padding=0)
+        self.pool = nn.AdaptiveAvgPool3d((self.pool_t, self.pool_h, self.pool_w))
+        self.num_kv_tokens = self.pool_t * self.pool_h * self.pool_w
+
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_kv_tokens, self.latent_dim))
+        self.latents = nn.Parameter(torch.randn(1, self.num_latents, self.latent_dim))
+
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=self.latent_dim,
+            num_heads=self.num_heads,
+            batch_first=True,
+        )
+        self.norm1 = nn.LayerNorm(self.latent_dim)
+        self.norm2 = nn.LayerNorm(self.latent_dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(self.latent_dim, self.latent_dim * 4),
+            nn.GELU(),
+            nn.Linear(self.latent_dim * 4, self.latent_dim),
+        )
+        self.out_proj = nn.Linear(self.latent_dim, self.out_token_dim)
+
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+        nn.init.trunc_normal_(self.latents, std=0.02)
+
+    def forward(self, v_theta: torch.Tensor) -> torch.Tensor:
+        if v_theta.ndim != 5:
+            raise ValueError(f"`v_theta` must be 5D [B,C,F,H,W], got shape {tuple(v_theta.shape)}")
+        if int(v_theta.shape[1]) != self.in_channels:
+            raise ValueError(
+                f"`v_theta` channel dim must be {self.in_channels}, got {int(v_theta.shape[1])}"
+            )
+        x = self.channel_proj(v_theta)
+        x = self.pool(x)
+        kv = x.flatten(start_dim=2).transpose(1, 2)
+        if int(kv.shape[1]) != self.num_kv_tokens:
+            raise ValueError("Unexpected kv token count after pooling.")
+        kv = kv + self.pos_embed.to(device=kv.device, dtype=kv.dtype)
+
+        q = self.latents.expand(v_theta.shape[0], -1, -1).to(device=kv.device, dtype=kv.dtype)
+        attn_out, _ = self.cross_attn(query=q, key=kv, value=kv, need_weights=False)
+        h = self.norm1(q + attn_out)
+        h = self.norm2(h + self.mlp(h))
+        return self.out_proj(h)
+
+
 class FastWAM(torch.nn.Module):
     """MoT world model with video/action experts."""
 
@@ -84,6 +166,11 @@ class FastWAM(torch.nn.Module):
         self.torch_dtype = torch_dtype
         self.loss_lambda_video = float(loss_lambda_video)
         self.loss_lambda_action = float(loss_lambda_action)
+
+        self.train_mode = None
+        self.freeze_wan = False
+        self.vfar = None
+        self.vfar_decoder: VFaRPerceiverEncoder | None = None
 
         self.to(self.device)
 
@@ -179,6 +266,101 @@ class FastWAM(torch.nn.Module):
             ),
         }
         return model
+
+    def configure_training(self, train_mode: str | None = None, freeze_wan: bool = False, vfar: dict | None = None):
+        self.train_mode = None if train_mode is None else str(train_mode)
+        self.freeze_wan = bool(freeze_wan)
+        self.vfar = None if vfar is None else dict(vfar)
+        if self.vfar is not None and bool(self.vfar.get("enabled", False)):
+            num_latents = int(self.vfar.get("num_tokens", 8))
+            out_token_dim = int(self.vfar.get("token_dim", self.text_dim))
+            latent_dim = int(self.vfar.get("latent_dim", 256))
+            num_heads = int(self.vfar.get("num_heads", 8))
+            pool_cfg = self.vfar.get("pool", {})
+            if pool_cfg is None:
+                pool_cfg = {}
+            if not isinstance(pool_cfg, dict):
+                raise ValueError(f"`vfar.pool` must be dict-like, got {type(pool_cfg)}")
+            pool_t = int(pool_cfg.get("t", 3))
+            pool_h = int(pool_cfg.get("h", 2))
+            pool_w = int(pool_cfg.get("w", 2))
+            need_new = False
+            if self.vfar_decoder is None:
+                need_new = True
+            else:
+                if (
+                    int(self.vfar_decoder.num_latents) != num_latents
+                    or int(self.vfar_decoder.out_token_dim) != out_token_dim
+                    or int(self.vfar_decoder.latent_dim) != latent_dim
+                    or int(self.vfar_decoder.num_heads) != num_heads
+                    or int(self.vfar_decoder.pool_t) != pool_t
+                    or int(self.vfar_decoder.pool_h) != pool_h
+                    or int(self.vfar_decoder.pool_w) != pool_w
+                ):
+                    need_new = True
+            if need_new:
+                self.vfar_decoder = VFaRPerceiverEncoder(
+                    in_channels=48,
+                    latent_dim=latent_dim,
+                    num_latents=num_latents,
+                    num_heads=num_heads,
+                    pool_t=pool_t,
+                    pool_h=pool_h,
+                    pool_w=pool_w,
+                    out_token_dim=out_token_dim,
+                ).to(device=self.device, dtype=self.torch_dtype)
+        if self.freeze_wan:
+            self._freeze_wan_modules()
+
+    def _freeze_wan_modules(self):
+        self.video_expert.eval()
+        self.video_expert.requires_grad_(False)
+        self.vae.eval()
+        self.vae.requires_grad_(False)
+        if self.text_encoder is not None:
+            self.text_encoder.eval()
+            self.text_encoder.requires_grad_(False)
+
+    def _get_vfar_timestep(self, batch_size: int, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
+        vfar_cfg = {} if self.vfar is None else self.vfar
+        strategy = str(vfar_cfg.get("timestep_strategy", "t1")).strip().lower()
+        if strategy in {"t1", "pure_noise", "endpoint"}:
+            value = float(self.train_video_scheduler.num_train_timesteps)
+        elif strategy == "from_scheduler_step0":
+            timesteps, _ = self.infer_video_scheduler.build_inference_schedule(
+                num_inference_steps=1, device=device, dtype=dtype
+            )
+            value = float(timesteps[0].item())
+        elif strategy == "fixed_normalized":
+            t01 = float(vfar_cfg.get("fixed_timestep", 1.0))
+            value = t01 * float(self.train_video_scheduler.num_train_timesteps)
+        else:
+            value = float(vfar_cfg.get("fixed_timestep", 1.0))
+        return torch.full((int(batch_size),), value, device=device, dtype=dtype)
+
+    def _compute_vfar_tokens(
+        self,
+        input_latents: torch.Tensor,
+        context: torch.Tensor,
+        context_mask: torch.Tensor,
+        fuse_vae_embedding_in_latents: bool,
+    ) -> torch.Tensor:
+        if self.vfar_decoder is None:
+            raise ValueError("`vfar_decoder` is not initialized. Call `configure_training(..., vfar=...)` first.")
+        batch_size = int(input_latents.shape[0])
+        timestep_vfar = self._get_vfar_timestep(batch_size=batch_size, dtype=input_latents.dtype, device=input_latents.device)
+        noise = torch.randn_like(input_latents)
+        latents_vfar = self.train_video_scheduler.add_noise(input_latents, noise, timestep_vfar)
+        with torch.no_grad():
+            pred_vfar = self.video_expert(
+                x=latents_vfar,
+                timestep=timestep_vfar,
+                context=context,
+                context_mask=context_mask,
+                action=None,
+                fuse_vae_embedding_in_latents=fuse_vae_embedding_in_latents,
+            )
+        return self.vfar_decoder(pred_vfar.to(device=self.device, dtype=self.torch_dtype))
 
     def to(self, *args, **kwargs):
         super().to(*args, **kwargs)
@@ -563,6 +745,71 @@ class FastWAM(torch.nn.Module):
         loss_total = self.loss_lambda_video * loss_video + self.loss_lambda_action * loss_action
         loss_dict = {
             "loss_video": self.loss_lambda_video * float(loss_video.detach().item()),
+            "loss_action": self.loss_lambda_action * float(loss_action.detach().item()),
+        }
+        return loss_total, loss_dict
+
+    def training_loss_action_only_vfar(self, sample, tiled: bool = False):
+        inputs = self.build_inputs(sample, tiled=tiled)
+        input_latents = inputs["input_latents"]
+        batch_size = int(input_latents.shape[0])
+        context = inputs["context"]
+        context_mask = inputs["context_mask"]
+        action = inputs["action"]
+        action_is_pad = inputs["action_is_pad"]
+
+        if self.vfar_decoder is None:
+            raise ValueError("`vfar_decoder` is required for `train_mode=action_only_vfar`.")
+        vfar_tokens = self._compute_vfar_tokens(
+            input_latents=input_latents,
+            context=context,
+            context_mask=context_mask,
+            fuse_vae_embedding_in_latents=inputs["fuse_vae_embedding_in_latents"],
+        )
+        if vfar_tokens.ndim != 3:
+            raise ValueError(f"`vfar_tokens` must be 3D [B, N, D], got shape {tuple(vfar_tokens.shape)}")
+        if int(vfar_tokens.shape[0]) != batch_size:
+            raise ValueError("Batch mismatch between `vfar_tokens` and inputs.")
+        if int(vfar_tokens.shape[2]) != int(context.shape[2]):
+            raise ValueError(
+                f"VFaR token dim must match context dim, got {int(vfar_tokens.shape[2])} vs {int(context.shape[2])}."
+            )
+
+        vfar_mask = torch.ones((batch_size, vfar_tokens.shape[1]), dtype=torch.bool, device=context_mask.device)
+        context_aug = torch.cat([context, vfar_tokens.to(device=context.device, dtype=context.dtype)], dim=1)
+        context_mask_aug = torch.cat([context_mask, vfar_mask], dim=1)
+
+        noise_action = torch.randn_like(action)
+        timestep_action = self.train_action_scheduler.sample_training_t(
+            batch_size=batch_size,
+            device=self.device,
+            dtype=action.dtype,
+        )
+        noisy_action = self.train_action_scheduler.add_noise(action, noise_action, timestep_action)
+        target_action = self.train_action_scheduler.training_target(action, noise_action, timestep_action)
+
+        pred_action = self.action_expert(
+            action_tokens=noisy_action,
+            timestep=timestep_action,
+            context=context_aug,
+            context_mask=context_mask_aug,
+        )
+
+        action_loss_token = F.mse_loss(pred_action.float(), target_action.float(), reduction="none").mean(dim=2)
+        if action_is_pad is not None:
+            valid = (~action_is_pad).to(device=action_loss_token.device, dtype=action_loss_token.dtype)
+            valid_sum = valid.sum(dim=1).clamp(min=1.0)
+            action_loss_per_sample = (action_loss_token * valid).sum(dim=1) / valid_sum
+        else:
+            action_loss_per_sample = action_loss_token.mean(dim=1)
+
+        action_weight = self.train_action_scheduler.training_weight(timestep_action).to(
+            action_loss_per_sample.device, dtype=action_loss_per_sample.dtype
+        )
+        loss_action = (action_loss_per_sample * action_weight).mean()
+
+        loss_total = self.loss_lambda_action * loss_action
+        loss_dict = {
             "loss_action": self.loss_lambda_action * float(loss_action.detach().item()),
         }
         return loss_total, loss_dict
@@ -1091,6 +1338,12 @@ class FastWAM(torch.nn.Module):
             "step": step,
             "torch_dtype": str(self.torch_dtype),
         }
+        payload["action_expert"] = self.action_expert.state_dict()
+        if self.vfar_decoder is not None:
+            payload["vfar_decoder"] = self.vfar_decoder.state_dict()
+            payload["vfar"] = {} if self.vfar is None else dict(self.vfar)
+        if self.train_mode is not None:
+            payload["train_mode"] = str(self.train_mode)
         if self.proprio_encoder is not None:
             payload["proprio_encoder"] = self.proprio_encoder.state_dict()
         if optimizer is not None:
@@ -1114,9 +1367,23 @@ class FastWAM(torch.nn.Module):
         elif "proprio_encoder" in payload:
             logger.warning("Checkpoint contains `proprio_encoder` weights but current model has `proprio_dim=None`; ignoring.")
 
+        if "action_expert" in payload:
+            self.action_expert.load_state_dict(payload["action_expert"], strict=False)
+        if "vfar_decoder" in payload:
+            if self.vfar_decoder is not None:
+                self.vfar_decoder.load_state_dict(payload["vfar_decoder"], strict=True)
+            else:
+                logger.warning("Checkpoint contains `vfar_decoder` but current model has no `vfar_decoder`; ignoring.")
+        if "train_mode" in payload and self.train_mode is None:
+            self.train_mode = payload["train_mode"]
+        if "vfar" in payload and self.vfar is None:
+            self.vfar = payload["vfar"]
+
         if optimizer is not None and "optimizer" in payload:
             optimizer.load_state_dict(payload["optimizer"])
         return payload
 
     def forward(self, *args, **kwargs):
+        if str(getattr(self, "train_mode", "")).strip().lower() == "action_only_vfar":
+            return self.training_loss_action_only_vfar(*args, **kwargs)
         return self.training_loss(*args, **kwargs)

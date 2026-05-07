@@ -79,13 +79,8 @@ class Wan22Trainer:
         if self.val_dataset is not None:
             self._assert_dataset_length_consistent(self.val_dataset, "val_dataset")
 
-        # Freeze non-trainable modules before optimizer/deepspeed initialization.
-        # This keeps DiT (+ optional proprio encoder) as trainable when ZeRO builds optimizer state.
-        self._apply_dit_only_train_mode(self.model)
-        trainable_params = list(self.model.dit.parameters())
-        proprio_encoder = getattr(self.model, "proprio_encoder", None)
-        if proprio_encoder is not None:
-            trainable_params.extend(list(proprio_encoder.parameters()))
+        self._apply_configured_train_mode(self.model)
+        trainable_params = self._collect_trainable_params(self.model)
         self.optimizer = torch.optim.AdamW(
             trainable_params,
             lr=self.learning_rate,
@@ -277,14 +272,41 @@ class Wan22Trainer:
         self.accelerator.unwrap_model(self.model).load_checkpoint(str(resume_path), optimizer=None)
         logger.warning("Loaded .pt weights only; optimizer/scheduler/step were not restored under ZeRO2.")
 
-    def _set_dit_only_train_mode(self):
-        # Match DiffSynth's freeze_except("dit"): only DiT stays trainable/in-train-mode.
-        logger.info("Setting DiT to train mode and freezing other model components.")
-        model = self.accelerator.unwrap_model(self.model)
-        self._apply_dit_only_train_mode(model)
-
     @staticmethod
-    def _apply_dit_only_train_mode(model):
+    def _infer_train_mode(model) -> str:
+        mode = getattr(model, "train_mode", None)
+        if mode is None:
+            return "dit_only"
+        return str(mode).strip().lower()
+
+    def _set_configured_train_mode(self):
+        model = self.accelerator.unwrap_model(self.model)
+        self._apply_configured_train_mode(model)
+
+    @classmethod
+    def _apply_configured_train_mode(cls, model):
+        mode = cls._infer_train_mode(model)
+        if mode == "action_only_vfar":
+            logger.info("Setting action-only VFaR train mode and freezing other model components.")
+            model.eval()
+            model.requires_grad_(False)
+            action_expert = getattr(model, "action_expert", None)
+            if action_expert is None:
+                raise ValueError("train_mode=action_only_vfar requires `model.action_expert`.")
+            action_expert.train()
+            action_expert.requires_grad_(True)
+            vfar_decoder = getattr(model, "vfar_decoder", None)
+            if vfar_decoder is None:
+                raise ValueError("train_mode=action_only_vfar requires `model.vfar_decoder`.")
+            vfar_decoder.train()
+            vfar_decoder.requires_grad_(True)
+            proprio_encoder = getattr(model, "proprio_encoder", None)
+            if proprio_encoder is not None:
+                proprio_encoder.train()
+                proprio_encoder.requires_grad_(True)
+            return
+
+        logger.info("Setting DiT to train mode and freezing other model components.")
         model.eval()
         model.requires_grad_(False)
         model.dit.train()
@@ -293,6 +315,24 @@ class Wan22Trainer:
         if proprio_encoder is not None:
             proprio_encoder.train()
             proprio_encoder.requires_grad_(True)
+
+    @classmethod
+    def _collect_trainable_params(cls, model):
+        mode = cls._infer_train_mode(model)
+        trainable_params = []
+        if mode == "action_only_vfar":
+            trainable_params.extend(list(model.action_expert.parameters()))
+            trainable_params.extend(list(model.vfar_decoder.parameters()))
+            proprio_encoder = getattr(model, "proprio_encoder", None)
+            if proprio_encoder is not None:
+                trainable_params.extend(list(proprio_encoder.parameters()))
+            return trainable_params
+
+        trainable_params.extend(list(model.dit.parameters()))
+        proprio_encoder = getattr(model, "proprio_encoder", None)
+        if proprio_encoder is not None:
+            trainable_params.extend(list(proprio_encoder.parameters()))
+        return trainable_params
 
     @staticmethod
     def _to_batched_eval_sample(sample):
@@ -546,7 +586,7 @@ class Wan22Trainer:
         action_l1_mean = gathered_metrics[:, 8].mean().item() if action_l1 is not None else None
 
         if was_dit_training:
-            self._set_dit_only_train_mode()
+            self._set_configured_train_mode()
 
         result = {
             "val_loss": float(mean_metrics[0].item()),
@@ -644,7 +684,7 @@ class Wan22Trainer:
         )
 
     def train(self):
-        self._set_dit_only_train_mode()
+        self._set_configured_train_mode()
 
         unwrapped_model = self.accelerator.unwrap_model(self.model)
 

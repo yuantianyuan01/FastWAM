@@ -80,6 +80,9 @@ def create_fastwam(
     tokenizer_max_len: int = 512,
     load_text_encoder: bool = True,
     proprio_dim: int | None = None,
+    train_mode: str | None = None,
+    freeze_wan: bool = False,
+    vfar=None,
     action_dit_config=None,
     action_dit_pretrained_path: str | None = None,
     skip_dit_load_from_pretrain: bool = False,
@@ -133,7 +136,12 @@ def create_fastwam(
     if not isinstance(loss, dict):
         raise ValueError(f"`loss` must be dict-like, got {type(loss)}")
 
-    return FastWAM.from_wan22_pretrained(
+    if isinstance(vfar, DictConfig):
+        vfar = OmegaConf.to_container(vfar, resolve=True)
+    if vfar is not None and not isinstance(vfar, dict):
+        raise ValueError(f"`vfar` must be dict-like, got {type(vfar)}")
+
+    model = FastWAM.from_wan22_pretrained(
         device=device,
         torch_dtype=model_dtype,
         model_id=model_id,
@@ -156,6 +164,8 @@ def create_fastwam(
         loss_lambda_video=float(loss.get("lambda_video", 1.0)),
         loss_lambda_action=float(loss.get("lambda_action", 1.0)),
     )
+    model.configure_training(train_mode=train_mode, freeze_wan=freeze_wan, vfar=vfar)
+    return model
 
 
 def create_fastwam_joint(

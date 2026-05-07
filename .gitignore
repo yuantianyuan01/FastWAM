@@ -18,7 +18,14 @@ evaluate_results/
 # Data types
 *.jit
 *.pt
+*.pth
+*.ckpt
+*.safetensors
 *.hdr
+*.png
+*.jpg
+*.jpeg
+*.gif
 *.webp
 *.pgm
 *.tiff

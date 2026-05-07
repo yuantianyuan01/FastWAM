@@ -8,6 +8,20 @@ redirect_common_files: true
 mot_checkpoint_mixed_attn: true
 action_dit_pretrained_path: checkpoints/ActionDiT_linear_interp_Wan22_alphascale_1024hdim.pt
 skip_dit_load_from_pretrain: false
+train_mode: action_only_vfar
+freeze_wan: true
+vfar:
+  enabled: true
+  timestep_strategy: t1
+  fixed_timestep: 1.0
+  num_tokens: 8
+  token_dim: 4096
+  latent_dim: 256
+  num_heads: 8
+  pool:
+    t: 3
+    h: 2
+    w: 2
 
 video_dit_config:
   has_image_input: false
@@ -55,4 +69,5 @@ action_scheduler:
   num_train_timesteps: 1000
 
 loss:
+  lambda_video: 0.0
   lambda_action: 1.0
