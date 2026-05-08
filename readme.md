@@ -527,6 +527,14 @@ python scripts/precompute_text_embeds.py \
 
 这一步会从 Wan22 DiT 插值得到 ActionDiT backbone 初始化权重（用于训练更稳定、对齐官方设置）。
 
+如果缺少该文件，`scripts/train.py` 会在模型创建阶段直接报错：
+
+- `FileNotFoundError: action_dit_pretrained_path does not exist: checkpoints/ActionDiT_linear_interp_Wan22_alphascale_1024hdim.pt`
+
+注意：`--output checkpoints/...` 是相对路径，实际写入位置取决于当前仓库的 `checkpoints` 目录：
+- 如果 `checkpoints` 是软链接（推荐，把大文件放盘上），生成的 `.pt` 会写入软链接指向的目录，例如：`/data-ex/home/sxy/fastwam_assets/checkpoints/...`
+- 如果 `checkpoints` 是普通目录，则写入仓库内 `./checkpoints/...`
+
 ```bash
 cd /home/sxy/embodied-ai/FastWAM
 source "$(conda info --base)/etc/profile.d/conda.sh"
@@ -582,6 +590,37 @@ export DIFFSYNTH_MODEL_BASE_PATH=/home/sxy/embodied-ai/models
 python scripts/train.py \
   data=libero_2cam \
   model=fastwam \
+  batch_size=1 num_workers=0 \
+  max_steps=1 log_every=1 \
+  wandb.enabled=false
+
+  cd /home/sxy/embodied-ai/FastWAM
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate fastwam
+export DIFFSYNTH_MODEL_BASE_PATH=/home/sxy/embodied-ai/models
+
+CUDA_VISIBLE_DEVICES=1,2 \
+torchrun --standalone --nproc_per_node=2 scripts/train.py \
+  data=libero_2cam \
+  model=fastwam \
+  batch_size=1 num_workers=4 \
+  max_steps=1 log_every=1 \
+  wandb.enabled=false
+
+CUDA_VISIBLE_DEVICES=0,1 \
+torchrun --standalone --nproc_per_node=2 scripts/train.py \
+  data=libero_2cam \
+  model=fastwam \
+  output_dir=./runs/libero_2cam_fastwam_a100_2gpu \
+  batch_size=2 num_workers=8 \
+  max_steps=100000 log_every=50 \
+  save_every=1000 eval_every=2000 eval_num_inference_steps=10 \
+  gradient_accumulation_steps=4 mixed_precision=bf16 \
+  wandb.enabled=false
+
+CUDA_VISIBLE_DEVICES=1,2 \
+accelerate launch --num_processes 2 scripts/train.py \
+  data=libero_2cam model=fastwam \
   batch_size=1 num_workers=0 \
   max_steps=1 log_every=1 \
   wandb.enabled=false

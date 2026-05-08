@@ -65,7 +65,13 @@ class Wan22Trainer:
         logger.info(
             "Accelerate training: distributed_type=%s zero_stage=%s world_size=%d process_index=%d cfg_mixed_precision=%s accelerator_mixed_precision=%s grad_accum=%d grad_clip=%.4f",
             self.accelerator.distributed_type,
-            self.accelerator.state.deepspeed_plugin.deepspeed_config.get("zero_optimization", {}).get("stage", "unknown"),
+            (
+                "none"
+                if getattr(self.accelerator.state, "deepspeed_plugin", None) is None
+                else self.accelerator.state.deepspeed_plugin.deepspeed_config.get("zero_optimization", {}).get(
+                    "stage", "unknown"
+                )
+            ),
             self.accelerator.num_processes,
             self.accelerator.process_index,
             self.mixed_precision,
@@ -81,6 +87,8 @@ class Wan22Trainer:
 
         self._apply_configured_train_mode(self.model)
         trainable_params = self._collect_trainable_params(self.model)
+        if self.accelerator.is_main_process:
+            self._log_trainable_param_summary(self.model, trainable_params)
         self.optimizer = torch.optim.AdamW(
             trainable_params,
             lr=self.learning_rate,
@@ -333,6 +341,38 @@ class Wan22Trainer:
         if proprio_encoder is not None:
             trainable_params.extend(list(proprio_encoder.parameters()))
         return trainable_params
+
+    @staticmethod
+    def _log_trainable_param_summary(model, optimizer_params):
+        optimizer_param_ids = {id(p) for p in optimizer_params if isinstance(p, torch.Tensor)}
+        optimizer_unique_numel = sum(
+            int(p.numel()) for p in optimizer_params if isinstance(p, torch.Tensor) and id(p) in optimizer_param_ids
+        )
+        total_numel = sum(int(p.numel()) for p in model.parameters())
+        trainable_numel = sum(int(p.numel()) for p in model.parameters() if bool(getattr(p, "requires_grad", False)))
+
+        top_level_numel = {}
+        trainable_names = []
+        for name, param in model.named_parameters():
+            if not bool(getattr(param, "requires_grad", False)):
+                continue
+            prefix = name.split(".", 1)[0] if name else "<unnamed>"
+            top_level_numel[prefix] = int(top_level_numel.get(prefix, 0)) + int(param.numel())
+            if len(trainable_names) < 20:
+                trainable_names.append(name)
+
+        top_level_payload = ", ".join(
+            f"{k}={v:,}" for k, v in sorted(top_level_numel.items(), key=lambda kv: (-kv[1], kv[0]))
+        )
+        logger.info(
+            "Trainable params summary: total_numel=%s trainable_numel=%s optimizer_numel=%s trainable_by_top_level={%s}",
+            f"{total_numel:,}",
+            f"{trainable_numel:,}",
+            f"{optimizer_unique_numel:,}",
+            top_level_payload,
+        )
+        if trainable_names:
+            logger.info("Trainable param names (first %d): %s", len(trainable_names), ", ".join(trainable_names))
 
     @staticmethod
     def _to_batched_eval_sample(sample):

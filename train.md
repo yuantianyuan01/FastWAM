@@ -113,6 +113,12 @@ python scripts/precompute_text_embeds.py \
 
 需要可用 CUDA：
 
+如果缺少该文件，训练会在模型创建阶段直接报错：
+
+- `FileNotFoundError: action_dit_pretrained_path does not exist: checkpoints/ActionDiT_linear_interp_Wan22_alphascale_1024hdim.pt`
+
+`--output checkpoints/...` 是相对路径：如果仓库里的 `checkpoints` 是软链接，则会写到软链接指向的盘上目录。
+
 ```bash
 cd "$REPO"
 python scripts/preprocess_action_dit_backbone.py \
@@ -139,4 +145,3 @@ python scripts/train.py \
 验证点：
 - `train_mode=action_only_vfar` 时，optimizer 只包含 `vfar_decoder + action_expert (+ proprio_encoder 可选)`
 - `video_expert/vae/text_encoder` 的 `requires_grad=False`
-
