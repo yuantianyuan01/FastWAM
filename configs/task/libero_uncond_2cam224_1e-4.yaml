@@ -10,7 +10,7 @@ batch_size: 16
 num_workers: 8
 
 model:
-  mot_checkpoint_mixed_attn: false
+  mot_checkpoint_mixed_attn: true
 
 # scheduler
 lr_scheduler_type: "cosine"

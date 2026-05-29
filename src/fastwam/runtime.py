@@ -361,6 +361,9 @@ def run_training(cfg: DictConfig):
         log_level=logging.INFO,
         is_main_process=torch.distributed.get_rank() == 0 if torch.distributed.is_initialized() else True,
     )
+    if os.getenv("FASTWAM_CUDNN_BENCHMARK", "0").lower() in ("1", "true"):
+        torch.backends.cudnn.benchmark = True
+        logger.info("FASTWAM_CUDNN_BENCHMARK=1 -> torch.backends.cudnn.benchmark=True (auto-tune cudnn algos per shape)")
     misc.register_work_dir(cfg.output_dir)
     config_payload = OmegaConf.to_container(cfg, resolve=True)
     with open(Path(cfg.output_dir) / "config.yaml", "w") as f:

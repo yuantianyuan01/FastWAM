@@ -2,7 +2,9 @@ import logging
 import json
 import inspect
 import os
+import queue
 import re
+import threading
 from math import ceil
 from pathlib import Path
 import time
@@ -23,6 +25,112 @@ from .utils.video_io import save_mp4
 from .utils.video_metrics import pil_frames_to_video_tensor, video_psnr, video_ssim
 
 logger = get_logger(__name__)
+
+
+# Sentinel queue payloads emitted by AsyncEncodePrefetcher worker.
+_PREFETCH_OK = "ok"
+_PREFETCH_EPOCH_END = "epoch_end"
+_PREFETCH_ERR = "err"
+_PREFETCH_STOPPED = "stopped"
+
+
+class AsyncEncodePrefetcher:
+    """Run dataloader fetch + VAE encode on a dedicated CUDA stream / Python thread.
+
+    Single persistent worker + bounded queue. Worker pulls a batch from the
+    dataloader, runs `encode_fn(batch)` on `stream`, and pushes the result.
+    Main thread pops via `get_next()` and `wait_stream` before consuming the
+    GPU tensors.
+
+    Epoch boundaries (StopIteration) are propagated as a sentinel payload so
+    the main thread can update its `epoch` / `batch_in_epoch` counters before
+    the next batch.
+    """
+
+    def __init__(self, dataloader, encode_fn, stream, device, prefetch_factor: int = 1):
+        self._dataloader = dataloader
+        self._encode_fn = encode_fn
+        self._stream = stream
+        self._device = device
+        self._q: "queue.Queue[tuple[str, object]]" = queue.Queue(maxsize=max(int(prefetch_factor), 1))
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread is not None:
+            raise RuntimeError("AsyncEncodePrefetcher already started")
+        self._thread = threading.Thread(target=self._worker_loop, daemon=True, name="encode-prefetch")
+        self._thread.start()
+
+    def _worker_loop(self) -> None:
+        try:
+            torch.cuda.set_device(self._device)
+            # Pin this thread to encode_stream for its lifetime so that EVERY
+            # GPU op originating here (including accelerate's automatic
+            # `send_to_device` inside `next(data_iter)` and the H2D copies
+            # inside `build_inputs`) lands on encode_stream rather than the
+            # default stream.
+            with torch.cuda.stream(self._stream):
+                data_iter = iter(self._dataloader)
+                while not self._stop_event.is_set():
+                    try:
+                        batch = next(data_iter)
+                    except StopIteration:
+                        if not self._put_interruptible((_PREFETCH_EPOCH_END, None)):
+                            break
+                        if self._stop_event.is_set():
+                            break
+                        data_iter = iter(self._dataloader)
+                        continue
+
+                    try:
+                        inputs = self._encode_fn(batch)
+                    except BaseException as exc:  # noqa: BLE001
+                        try:
+                            self._q.put((_PREFETCH_ERR, exc), timeout=1.0)
+                        except queue.Full:
+                            logger.exception("encode prefetcher worker died but queue is full")
+                        return
+
+                    if not self._put_interruptible((_PREFETCH_OK, inputs)):
+                        break
+        except BaseException as exc:  # noqa: BLE001 — re-raise on main
+            try:
+                self._q.put((_PREFETCH_ERR, exc), timeout=1.0)
+            except queue.Full:
+                logger.exception("encode prefetcher worker died but queue is full")
+        finally:
+            try:
+                self._q.put_nowait((_PREFETCH_STOPPED, None))
+            except queue.Full:
+                pass
+
+    def get_next(self) -> tuple[str, object]:
+        return self._q.get()
+
+    def _put_interruptible(self, item) -> bool:
+        while not self._stop_event.is_set():
+            try:
+                self._q.put(item, timeout=0.2)
+                return True
+            except queue.Full:
+                continue
+        return False
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread is None:
+            return
+        deadline = time.monotonic() + 30.0
+        while self._thread.is_alive() and time.monotonic() < deadline:
+            try:
+                self._q.get(timeout=0.1)
+            except queue.Empty:
+                pass
+        self._thread.join(timeout=1.0)
+        if self._thread.is_alive():
+            logger.warning("encode prefetcher worker did not exit within timeout")
+        self._thread = None
 
 
 class Wan22Trainer:
@@ -61,7 +169,7 @@ class Wan22Trainer:
             mixed_precision=self.mixed_precision,
             step_scheduler_with_optimizer=False,
         )
-        
+
         logger.info(
             "Accelerate training: distributed_type=%s zero_stage=%s world_size=%d process_index=%d cfg_mixed_precision=%s accelerator_mixed_precision=%s grad_accum=%d grad_clip=%.4f",
             self.accelerator.distributed_type,
@@ -121,12 +229,98 @@ class Wan22Trainer:
             self.model, self.optimizer, self.train_loader, self.scheduler
         )
         self.optimizer.zero_grad(set_to_none=True)
+        self._maybe_compile_mot()
+        self._maybe_compile_vae()
         self.wandb_run = None
         self._init_wandb()
         self._resume_or_load_checkpoint()
 
         val_size = len(self.val_dataset) if self.val_dataset is not None else len(self.train_dataset)
         logger.info("Train/val dataset size: %d/%d", len(self.train_dataset), val_size)
+
+    def _maybe_compile_mot(self):
+        """torch.compile MoT sub-modules (self_attn / cross_attn / ffn) per layer.
+
+        Cfg keys:
+          - compile_mot: bool, default false
+          - compile_mot_mode: str, default "default"
+        """
+        if not bool(self.cfg.get("compile_mot", False)):
+            return
+        mode = str(self.cfg.get("compile_mot_mode", "default"))
+        unwrapped = self.accelerator.unwrap_model(self.model)
+        mot = getattr(unwrapped, "mot", None)
+        if mot is None or not hasattr(mot, "mixtures"):
+            logger.warning("compile_mot=true but model has no `.mot.mixtures`; skipping")
+            return
+        # Multiple blocks share one inner-frame code object (via dynamo
+        # external_utils.wrap_inline); default recompile_limit=8 → fallback to
+        # eager after 8. Bump to 64 to leave headroom for seq-axis specializations.
+        import torch._dynamo as _dynamo
+        prev_limit = _dynamo.config.recompile_limit
+        _dynamo.config.recompile_limit = max(prev_limit, 64)
+        compiled = 0
+        for expert in mot.mixtures.values():
+            for block in getattr(expert, "blocks", []):
+                for sub in ("self_attn", "cross_attn", "ffn"):
+                    mod = getattr(block, sub, None)
+                    if mod is None:
+                        continue
+                    mod.forward = torch.compile(mod.forward, mode=mode, dynamic=True)
+                    compiled += 1
+        logger.info(
+            "Compiled %d MoT sub-modules across %d experts (mode=%s, dynamic=True, recompile_limit %d→%d)",
+            compiled, len(mot.mixtures), mode, prev_limit, _dynamo.config.recompile_limit,
+        )
+
+    def _maybe_compile_vae(self):
+        """torch.compile vae.single_encode (no-grad path).
+
+        Cfg keys (hydra):
+          - compile_vae: bool, default false
+          - compile_vae_mode: str, default "default"
+              Pass "reduce-overhead" to use inductor + cudagraphs (lower kernel
+              launch overhead, but cudagraph re-captures whenever input shape
+              or tensor address changes).
+
+        VAE encode is not part of the trained graph (@torch.no_grad), so this
+        is a pure latency play.
+        """
+        if not bool(self.cfg.get("compile_vae", False)):
+            return
+        mode = str(self.cfg.get("compile_vae_mode", "default"))
+        unwrapped = self.accelerator.unwrap_model(self.model)
+        vae = getattr(unwrapped, "vae", None)
+        if vae is None or not hasattr(vae, "single_encode"):
+            logger.warning("compile_vae=true but model has no `.vae.single_encode`; skipping")
+            return
+        # `WanVideoVAE.scale` is a Python list of CPU tensors built in
+        # __init__ (`[self.mean, 1.0/self.std]`). Inside `model.encode` they
+        # are `.to(device=mu.device)`-d every call. Inductor + cudagraphs
+        # refuses to capture under reduce-overhead because of that CPU input
+        # ("skipping cudagraphs due to cpu device"). Move them to the
+        # accelerator device once so the per-call `.to(device=...)` becomes a
+        # same-device no-op and cudagraph capture proceeds.
+        device = self.accelerator.device
+        if hasattr(vae, "mean") and isinstance(vae.mean, torch.Tensor) and vae.mean.device != device:
+            vae.mean = vae.mean.to(device)
+        if hasattr(vae, "std") and isinstance(vae.std, torch.Tensor) and vae.std.device != device:
+            vae.std = vae.std.to(device)
+        if hasattr(vae, "scale") and isinstance(vae.scale, list):
+            vae.scale = [s.to(device) if isinstance(s, torch.Tensor) and s.device != device else s for s in vae.scale]
+        compiled_single_encode = torch.compile(vae.single_encode, mode=mode)
+        if mode == "reduce-overhead":
+            # `WanVideoVAE.encode(videos, ...)` calls `single_encode` once per
+            # video in the batch (bs=54 → 54 calls) and `torch.stack`s the
+            # outputs. Under cudagraph the output tensor aliases a single
+            # captured static buffer, so call N+1 clobbers the result of
+            # call N before the stack reads it. Clone to break the alias.
+            def _cloned_single_encode(*args, **kwargs):
+                return compiled_single_encode(*args, **kwargs).clone()
+            vae.single_encode = _cloned_single_encode
+        else:
+            vae.single_encode = compiled_single_encode
+        logger.info("Compiled vae.single_encode (mode=%s)", mode)
 
     def _init_wandb(self):
         if not self.wandb_enabled or not self.accelerator.is_main_process:
@@ -179,6 +373,8 @@ class Wan22Trainer:
             num_workers=self.num_workers,
             pin_memory=torch.cuda.is_available(),
             worker_init_fn=worker_init_fn,
+            prefetch_factor=int(self.cfg.get("dataloader_prefetch_factor", 2)) if self.num_workers > 0 else None,
+            persistent_workers=bool(self.cfg.get("dataloader_persistent_workers", False)) if self.num_workers > 0 else False,
         )
 
     def _assert_dataset_length_consistent(self, dataset, dataset_name: str):
@@ -656,22 +852,97 @@ class Wan22Trainer:
         self.run_start_step = self.global_step
         self.run_start_time = time.perf_counter()
 
+        # Encode/DiT overlap: optional async path that runs build_inputs (H2D
+        # copies + VAE encode) on a dedicated CUDA stream / Python thread, so
+        # the synchronous wait disappears behind DiT fwd/bwd of the previous
+        # step. See AsyncEncodePrefetcher above.
+        encode_overlap = bool(self.cfg.get("encode_overlap", False))
+        encode_stream: "torch.cuda.Stream | None" = None
+        prefetcher: "AsyncEncodePrefetcher | None" = None
+        unwrapped_model = self.accelerator.unwrap_model(self.model)
+        if encode_overlap:
+            encode_stream = torch.cuda.Stream(device=self.accelerator.device)
+            # Warmup: if compile_vae is on, trigger Dynamo tracing for VAE in
+            # the MAIN thread before spawning the worker. Otherwise the worker
+            # thread would do the first compile concurrently with main's MoT
+            # compile and risk a Dynamo speculation-log race.
+            if bool(self.cfg.get("compile_vae", False)):
+                try:
+                    warmup_batch = next(iter(self.train_loader))
+                except StopIteration:
+                    raise RuntimeError("train_loader is empty; cannot warmup encode for compile_vae")
+                logger.info("encode_overlap: warming up compile_vae in main thread (1 batch)...")
+                with torch.no_grad():
+                    _ = unwrapped_model.build_inputs(warmup_batch)
+                torch.cuda.synchronize()
+                del warmup_batch, _
+                logger.info("encode_overlap: compile_vae warmup done")
+            prefetcher = AsyncEncodePrefetcher(
+                dataloader=self.train_loader,
+                encode_fn=unwrapped_model.build_inputs,
+                stream=encode_stream,
+                device=self.accelerator.device,
+                prefetch_factor=int(self.cfg.get("encode_prefetch_factor", 1)),
+            )
+            prefetcher.start()
+            logger.info(
+                "encode_overlap=True (prefetch_factor=%d, encode_stream=%s)",
+                int(self.cfg.get("encode_prefetch_factor", 1)),
+                encode_stream,
+            )
+        else:
+            logger.info("encode_overlap=False (synchronous encode)")
+
         while self.global_step < self.max_steps:
-            try:
-                sample = next(data_iter)
+            _t_step_start = time.perf_counter()
+            inputs = None
+            sample = None
+            if encode_overlap:
+                # Pop one prepared batch from the worker. Sentinels:
+                #   "ok"        -> payload is encoded inputs dict
+                #   "epoch_end" -> dataloader exhausted; bump counters
+                #   "err"       -> re-raise worker exception
+                #   "stopped"   -> worker exited; treat as end-of-data
+                while True:
+                    status, payload = prefetcher.get_next()
+                    if status == _PREFETCH_OK:
+                        inputs = payload
+                        break
+                    if status == _PREFETCH_EPOCH_END:
+                        self.epoch += 1
+                        self.batch_in_epoch = 0
+                        self.train_sampler.clear_resume_batch_offset()
+                        continue
+                    if status == _PREFETCH_ERR:
+                        raise payload  # type: ignore[misc]
+                    # _PREFETCH_STOPPED
+                    inputs = None
+                    break
+                if inputs is None:
+                    break  # exit while-loop; worker stopped
                 self.batch_in_epoch += 1
-            except StopIteration:
-                self.epoch += 1
-                self.batch_in_epoch = 0
-                self.train_sampler.clear_resume_batch_offset()
-                data_iter = iter(self.train_loader)
-                continue
+                # Make subsequent default-stream ops wait for the
+                # encode_stream's queued work (vae.encode + H2D copies).
+                torch.cuda.current_stream().wait_stream(encode_stream)
+            else:
+                try:
+                    sample = next(data_iter)
+                    self.batch_in_epoch += 1
+                except StopIteration:
+                    self.epoch += 1
+                    self.batch_in_epoch = 0
+                    self.train_sampler.clear_resume_batch_offset()
+                    data_iter = iter(self.train_loader)
+                    continue
 
             with self.accelerator.accumulate(self.model):
                 train_model = self.model if hasattr(self.model, "training_loss") else self.accelerator.unwrap_model(self.model)
 
                 with self.accelerator.autocast():
-                    loss, loss_dict = train_model.training_loss(sample)
+                    if encode_overlap:
+                        loss, loss_dict = train_model.training_loss_from_inputs(inputs)
+                    else:
+                        loss, loss_dict = train_model.training_loss(sample)
                 self.accelerator.backward(loss)
 
                 if self.accelerator.sync_gradients:
@@ -706,10 +977,12 @@ class Wan22Trainer:
                         if global_loss_metrics:
                             detail_str = " ".join([f"{k}={v:.4f}" for k, v in sorted(global_loss_metrics.items())])
                             description += detail_str + " "
-                        description += "lr=%.2e speed=%.2f step/s, %.2f samples/s eta=%s" % (
+                        _step_dt = time.perf_counter() - _t_step_start
+                        description += "lr=%.2e speed=%.2f step/s, %.2f samples/s step_dt=%.3fs eta=%s" % (
                             current_lr,
                             steps_per_sec,
                             steps_per_sec * self.batch_size * self.accelerator.num_processes,
+                            _step_dt,
                             eta_str,
                         )
                         logger.info(description)
@@ -778,8 +1051,12 @@ class Wan22Trainer:
                                 ckpt_info["weights_path"],
                                 ckpt_info["state_path"],
                             )
+                        if prefetcher is not None:
+                            prefetcher.stop()
                         return
 
+        if prefetcher is not None:
+            prefetcher.stop()
         ckpt_info = self.save_checkpoint()
         if self.accelerator.is_main_process:
             logger.info(
