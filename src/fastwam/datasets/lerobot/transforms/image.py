@@ -8,9 +8,11 @@ class ToTensor(nn.Module):
         super().__init__()
     
     def forward(self, x: torch.Tensor):
-        assert x.dtype == torch.uint8
-        x = x.to(torch.float32) / 255.0
-        return x
+        if x.dtype == torch.uint8:
+            return x.to(torch.float32) / 255.0
+        if torch.is_floating_point(x):
+            return x.to(torch.float32)
+        raise TypeError(f"Expected uint8 or floating point image tensor, got {x.dtype}")
 
 class Pad(nn.Module):
     def __init__(self, padding, fill=0, padding_mode='constant'):

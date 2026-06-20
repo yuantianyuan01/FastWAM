@@ -14,6 +14,7 @@ logger = get_logger(__name__)
 
 MAX_GETITEM_ATTEMPT = 5
 
+
 class BaseLerobotDataset(torch.utils.data.Dataset):
     def __init__(
         self,
@@ -33,6 +34,7 @@ class BaseLerobotDataset(torch.utils.data.Dataset):
 
         # sampling
         global_sample_stride: int = 1,
+        image_delta_indices: Optional[List[int]] = None,
     ):
         assert len(dataset_dirs) > 0, "At least one dataset directory is required"
         assert past_action_size == 0
@@ -65,12 +67,19 @@ class BaseLerobotDataset(torch.utils.data.Dataset):
         self.state_meta = shape_meta["state"]
         self.action_meta = shape_meta["action"]
 
+        if image_delta_indices is None:
+            image_delta_indices = list(range(-past_obs_size, -past_obs_size + obs_size))
+        else:
+            image_delta_indices = [int(t) for t in image_delta_indices]
+            if len(image_delta_indices) == 0:
+                raise ValueError("image_delta_indices must contain at least one frame index.")
+
         delta_timestamps = {}
         for meta in self.image_meta:
             key = meta["key"]
             meta["lerobot_key"] = f"observation.images.{key}" if key != "default" else "observation.images"
             delta_timestamps[meta["lerobot_key"]] = [
-                (t * global_sample_stride) / fps for t in range(-past_obs_size, -past_obs_size + obs_size)
+                (t * global_sample_stride) / fps for t in image_delta_indices
             ]
         
         for meta in self.state_meta:
@@ -145,7 +154,6 @@ class BaseLerobotDataset(torch.utils.data.Dataset):
         image: torch.Tensor = lerobot_sample[lerobot_key]
         if image.ndim == 3: # time dim will lost when obs_size is 1
             image = image.unsqueeze(0)        
-        image = (image * 255).to(torch.uint8) # (1, 3, H, W)
         # For config simplication
         # assert image.shape[1:] == raw_shape, f"Image '{key}' shape {image.shape[1:]} mismatch with {raw_shape}."
         return image
@@ -213,6 +221,7 @@ class BaseLerobotDataset(torch.utils.data.Dataset):
             "state": {},
             "images": {},
         }
+
         for meta in self.state_meta:
             sample["state"][meta["key"]] = self._get_state(meta, lerobot_sample)
 

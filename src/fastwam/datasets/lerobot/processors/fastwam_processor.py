@@ -224,12 +224,20 @@ class FastWAMProcessor(BaseProcessor):
             for trans in current_transforms:
                 image = trans(image)
             
-            meta_shape = [self.num_obs_steps] + shape
-            assert image.shape == meta_shape, \
-                f"Expected shape {meta_shape}, got {image.shape} after transforms for key {key}"
+            valid_shapes = [[int(image.shape[0])] + list(shape)]
+            if "raw_shape" in meta:
+                raw_meta_shape = [int(image.shape[0])] + list(meta["raw_shape"])
+                if raw_meta_shape not in valid_shapes:
+                    valid_shapes.append(raw_meta_shape)
+            assert list(image.shape) in valid_shapes, \
+                f"Expected one of {valid_shapes}, got {image.shape} after transforms for key {key}"
 
             processed_images.append(image)
         pixel_values = torch.stack(processed_images, dim=0) # [num_input_cameras, T, C, H, W]
+        if sample["image_is_pad"].shape[0] != pixel_values.shape[1]:
+            raise ValueError(
+                f"image_is_pad length {sample['image_is_pad'].shape[0]} does not match image frames {pixel_values.shape[1]}"
+            )
         
         if self.num_output_cameras > pixel_values.shape[0]:
             out = torch.zeros((self.num_output_cameras,) + pixel_values.shape[1:], device=pixel_values.device, dtype=pixel_values.dtype)

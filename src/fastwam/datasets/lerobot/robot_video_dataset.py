@@ -1,12 +1,10 @@
 import hashlib
 import os
 from typing import Optional
-import time
 import numpy as np
 import traceback
 import torch
 import torchvision.transforms.functional as transforms_F
-from contextlib import contextmanager
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -15,12 +13,34 @@ from .base_lerobot_dataset import BaseLerobotDataset
 from .utils.normalizer import save_dataset_stats_to_json, load_dataset_stats_from_json
 from ..dataset_utils import ResizeSmallestSideAspectPreserving, CenterCrop, Normalize
 from fastwam.utils.logging_config import get_logger
-from fastwam.utils import misc, pytorch_utils
+from fastwam.utils import misc
 from accelerate import PartialState
 logger = get_logger(__name__)
 
 
 DEFAULT_PROMPT = "A video recorded from a robot's point of view executing the following instruction: {task}"
+
+
+def _is_resize_transform(transform) -> bool:
+    return (
+        transform.__class__.__name__ == "Resize"
+        and transform.__class__.__module__.startswith("torchvision.transforms")
+    )
+
+
+def _drop_resize_transforms(transforms):
+    if transforms is None:
+        return transforms, 0
+    if isinstance(transforms, dict):
+        total_removed = 0
+        filtered = {}
+        for key, value in transforms.items():
+            filtered[key], removed = _drop_resize_transforms(value)
+            total_removed += removed
+        return filtered, total_removed
+    filtered = [transform for transform in transforms if not _is_resize_transform(transform)]
+    return filtered, len(transforms) - len(filtered)
+
 
 class RobotVideoDataset(torch.utils.data.Dataset):
     def __init__(
@@ -41,26 +61,28 @@ class RobotVideoDataset(torch.utils.data.Dataset):
         skip_padding_as_possible: bool = False,
         max_padding_retry: int = 3,
         concat_multi_camera: str = "horizontal", # "horizontal", "vertical", "robotwin", or None
+        defer_processor_image_resize: bool = True,
         override_instruction: Optional[str] = None, # whether to hardcode a specific instruction for all samples, for debugging
     ):
+        self.num_frames = int(num_frames)
+        self.action_video_freq_ratio = int(action_video_freq_ratio)
+
+        assert (self.num_frames - 1) % self.action_video_freq_ratio == 0, \
+            f"num_frames-1 must be divisible by action_video_freq_ratio, got {self.num_frames - 1} and {self.action_video_freq_ratio}"
+        assert ((self.num_frames - 1) // self.action_video_freq_ratio) % 4 == 0, \
+            f"video frames must be divisible by 4 for tokenization, got {(self.num_frames - 1) // self.action_video_freq_ratio}"
+        self.video_sample_indices = list(range(0, self.num_frames, self.action_video_freq_ratio))
+
         self.lerobot_dataset = BaseLerobotDataset(
             dataset_dirs=dataset_dirs,
             shape_meta=OmegaConf.to_container(shape_meta, resolve=True),
-            obs_size=num_frames,
-            action_size=num_frames - 1,
+            obs_size=self.num_frames,
+            action_size=self.num_frames - 1,
             val_set_proportion=val_set_proportion,
             is_training_set=is_training_set,
             global_sample_stride=global_sample_stride,
+            image_delta_indices=self.video_sample_indices,
         )
-    
-        self.num_frames = num_frames
-        self.action_video_freq_ratio = action_video_freq_ratio
-        
-        assert (num_frames - 1) % self.action_video_freq_ratio == 0, \
-            f"num_frames-1 must be divisible by action_video_freq_ratio, got {num_frames - 1} and {self.action_video_freq_ratio}"
-        assert ((num_frames - 1) // self.action_video_freq_ratio) % 4 == 0, \
-            f"video frames must be divisible by 4 for tokenization, got {(num_frames - 1) // self.action_video_freq_ratio}"
-        self.video_sample_indices = list(range(0, num_frames, self.action_video_freq_ratio))
 
         self.camera_key = camera_key
         self.lerobot_dataset._set_return_images(True)
@@ -71,6 +93,7 @@ class RobotVideoDataset(torch.utils.data.Dataset):
         self.skip_padding_as_possible = skip_padding_as_possible
         self.max_padding_retry = max_padding_retry
         self.concat_multi_camera = concat_multi_camera
+        self.defer_processor_image_resize = defer_processor_image_resize
         self.override_instruction = override_instruction
 
         self.resize_transform = ResizeSmallestSideAspectPreserving(
@@ -85,6 +108,9 @@ class RobotVideoDataset(torch.utils.data.Dataset):
         if processor is not None:
             if isinstance(processor, DictConfig):
                 processor = instantiate(processor)
+            if self.defer_processor_image_resize:
+                processor.train_transforms, _ = _drop_resize_transforms(processor.train_transforms)
+                processor.val_transforms, _ = _drop_resize_transforms(processor.val_transforms)
             if not pretrained_norm_stats:
                 if not is_training_set:
                     raise ValueError("pretrained_norm_stats must be provided for validation/test sets since we don't want to calculate stats on them.")
@@ -141,14 +167,32 @@ class RobotVideoDataset(torch.utils.data.Dataset):
 
         video = sample["pixel_values"]  # [T, C, H, W] or [num_cameras, T, C, H, W]
         num_cameras = 1
+        expected_video_frames = len(self.video_sample_indices)
         if video.ndim == 5:
-            video = video[:, self.video_sample_indices, :, :, :] # [num_cameras, T_video, C, H, W]
+            raw_t = video.shape[1]
+            if raw_t == self.num_frames:
+                video = video[:, self.video_sample_indices, :, :, :] # [num_cameras, T_video, C, H, W]
+            elif raw_t != expected_video_frames:
+                raise ValueError(
+                    f"Expected video time dimension {self.num_frames} or {expected_video_frames}, got {raw_t}"
+                )
             num_cameras, T_video, C, H, W = video.shape
         else:
             assert video.ndim == 4, f"Expected video to have shape [T, C, H, W], but got {video.shape}"
-            video = video[self.video_sample_indices, :, :, :] # [T_video, C, H, W]
+            raw_t = video.shape[0]
+            if raw_t == self.num_frames:
+                video = video[self.video_sample_indices, :, :, :] # [T_video, C, H, W]
+            elif raw_t != expected_video_frames:
+                raise ValueError(
+                    f"Expected video time dimension {self.num_frames} or {expected_video_frames}, got {raw_t}"
+                )
             T_video, C, H, W = video.shape
-        image_is_pad = image_is_pad[self.video_sample_indices]
+        if image_is_pad.shape[0] == self.num_frames:
+            image_is_pad = image_is_pad[self.video_sample_indices]
+        elif image_is_pad.shape[0] != expected_video_frames:
+            raise ValueError(
+                f"Expected image_is_pad length {self.num_frames} or {expected_video_frames}, got {image_is_pad.shape[0]}"
+            )
 
         video = video.view(num_cameras, T_video, C, H, W)  # [num_cameras, T_video, C, H, W]
         if self.concat_multi_camera == "robotwin":

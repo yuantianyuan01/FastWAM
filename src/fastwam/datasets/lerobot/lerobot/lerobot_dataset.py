@@ -24,6 +24,8 @@ import datasets
 import numpy as np
 import packaging.version
 import PIL.Image
+import pyarrow as pa
+import pyarrow.compute as pc
 import torch
 import torch.utils
 import pyarrow.parquet as pq
@@ -499,12 +501,6 @@ class LeRobotDataset(torch.utils.data.Dataset):
 
         self.episode_data_index = get_episode_data_index(self.meta.episodes, self.episodes)
 
-        # Check timestamps
-        timestamps = torch.stack(self.hf_dataset["timestamp"]).numpy()
-        episode_indices = torch.stack(self.hf_dataset["episode_index"]).numpy()
-        ep_data_index_np = {k: t.numpy() for k, t in self.episode_data_index.items()}
-        # check_timestamps_sync(timestamps, episode_indices, ep_data_index_np, self.fps, self.tolerance_s)
-
         # Setup delta_indices
         if self.delta_timestamps is not None:
             # check_delta_timestamps(self.delta_timestamps, self.fps, self.tolerance_s)
@@ -675,13 +671,19 @@ class LeRobotDataset(torch.utils.data.Dataset):
     def _get_query_timestamps(
         self,
         current_ts: float,
+        idx: int | None = None,
         query_indices: dict[str, list[int]] | None = None,
     ) -> dict[str, list[float]]:
         query_timestamps = {}
         for key in self.meta.video_keys:
             if query_indices is not None and key in query_indices:
-                timestamps = self.hf_dataset.select(query_indices[key])["timestamp"]
-                query_timestamps[key] = torch.stack(timestamps).tolist()
+                if idx is None:
+                    timestamps = self.hf_dataset.select(query_indices[key])["timestamp"]
+                    query_timestamps[key] = torch.stack(timestamps).tolist()
+                else:
+                    query_timestamps[key] = [
+                        current_ts + (query_idx - idx) / self.fps for query_idx in query_indices[key]
+                    ]
             else:
                 query_timestamps[key] = [current_ts]
 
@@ -694,22 +696,26 @@ class LeRobotDataset(torch.utils.data.Dataset):
             if key not in self.meta.video_keys
         }
 
+    def _query_numeric_column_fast(self, key: str, q_idx: list[int]) -> torch.Tensor:
+        if len(q_idx) == 0:
+            return torch.empty(0)
+
+        is_contiguous = q_idx[-1] - q_idx[0] + 1 == len(q_idx) and all(
+            q_idx[i] + 1 == q_idx[i + 1] for i in range(len(q_idx) - 1)
+        )
+        if is_contiguous:
+            values = self.hf_dataset.data.slice(q_idx[0], len(q_idx)).column(key).to_pylist()
+        else:
+            values = pc.take(self.hf_dataset.data.column(key), pa.array(q_idx, type=pa.int64())).to_pylist()
+        return torch.as_tensor(values)
+
     def _query_hf_dataset_fast(self, query_indices: dict[str, list[int]]) -> dict:
         result = {}
-        processed_indices = set()
-        index_to_selected = {}
         for key, q_idx in query_indices.items():
             if key not in self.meta.video_keys :
                 if 'images' in key and not self.during_training:
                     continue
-                q_idx_tuple = tuple(q_idx)
-                if q_idx_tuple not in processed_indices:
-                    selected_data = self.hf_dataset.select(q_idx)
-                    index_to_selected[q_idx_tuple] = selected_data
-                    processed_indices.add(q_idx_tuple)
-                else:
-                    selected_data = index_to_selected[q_idx_tuple]
-                result[key] = torch.stack(selected_data[key])
+                result[key] = self._query_numeric_column_fast(key, q_idx)
         return result
     
     # no videos
@@ -760,7 +766,7 @@ class LeRobotDataset(torch.utils.data.Dataset):
 
         if len(self.meta.video_keys) > 0 and self.during_training:
             current_ts = item["timestamp"].item()
-            query_timestamps = self._get_query_timestamps(current_ts, query_indices)
+            query_timestamps = self._get_query_timestamps(current_ts, idx=idx, query_indices=query_indices)
             video_frames = self._query_videos(query_timestamps, ep_idx)
             item = {**video_frames, **item}
 
