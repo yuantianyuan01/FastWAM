@@ -13,6 +13,10 @@ Official codebase for **Fast-WAM: Do World Action Models Need Test-time Future I
 
 This repository contains the training and evaluation code for FastWAM on LIBERO / RoboTwin.
 
+## Intel XPU Support
+
+FastWAM inference has been validated on Intel XPU (Intel GPUs) and runs **without any code changes** to this repository. Install a PyTorch build with Intel XPU support and select the `xpu` device at runtime.
+
 ## Index
 
 - [File Structure](#file-structure)
