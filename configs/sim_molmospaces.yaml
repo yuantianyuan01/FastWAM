@@ -1,0 +1,41 @@
+# @package _global_
+
+defaults:
+  - train
+  - override /task: molmospaces_uncond_3cam_384_1e-4
+  - _self_
+
+ckpt: null
+gpu_id: 0
+
+model:
+  load_text_encoder: true
+  skip_dit_load_from_pretrain: true
+  action_dit_pretrained_path: null
+
+EVALUATION:
+  molmospaces_root: ${oc.env:FASTWAM_MOLMOSPACES_ROOT,third_party/MolmoSpaces}
+  molmospaces_assets_root: ${oc.env:FASTWAM_MOLMOSPACES_ASSETS_ROOT,data/molmospaces/assets}
+  molmospaces_cache_root: ${oc.env:FASTWAM_MOLMOSPACES_CACHE_ROOT,data/molmospaces/cache}
+  task_set: molmobot
+  task_name: null
+  output_dir: ./evaluate_results/molmospaces/${hydra:runtime.choices.task}/${now:%Y%m%d_%H%M%S}
+
+  action_representation: relative_joint
+  action_horizon: 10
+  replan_steps: 10
+  num_inference_steps: ${eval_num_inference_steps}
+  dataset_stats_path: ${oc.env:FASTWAM_MOLMOSPACES_STATS,null}
+  device: cuda
+
+MULTIRUN:
+  enabled: false
+  num_gpus: 8
+  max_tasks_per_gpu: 1
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null

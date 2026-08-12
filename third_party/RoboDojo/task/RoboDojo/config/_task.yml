@@ -1,0 +1,145 @@
+common:
+  data_source: "datagen"
+  scene_config: "default"
+  robot_config: "dual_x5"
+  camera_config: "camera_config"
+  render_interval: 10
+  robot_self_collision: true
+  eval_nums: 50
+
+tasks:
+  match_and_pick_from_conveyor:
+    data_source: "teleop"
+    scene_config: "conveyor"
+  
+  classify_objects:
+    data_source: "teleop"
+  
+  fill_egg_holder:
+    data_source: "teleop"
+    render_interval: 5
+    robot_self_collision: false
+
+  fill_pen_holder:
+    data_source: "teleop"
+  
+  put_bottles_into_dustbin:
+    data_source: "teleop"
+  
+  hang_mugs:
+    data_source: "teleop"
+    eval_nums: 25
+
+  hang_mugs_random:
+    data_source: "teleop"
+    eval_nums: 25
+  
+  imitate_sorting_sequence:
+    robot_config: "dual_x5_and_franka_competition"
+
+  make_kong:
+    robot_config: "dual_x5_and_franka_competition"
+  
+  fold_clothes:
+    eval_nums: 25
+  
+  fold_clothes_random:
+    eval_nums: 25
+  
+  arrange_largest_number:
+    eval_nums: 25
+
+  arrange_largest_number_random:
+    eval_nums: 25
+  
+  sort_nesting_dolls_by_size:
+    eval_nums: 25
+  
+  sort_nesting_dolls_by_size_random:
+    eval_nums: 25
+  
+  stack_blocks:
+    eval_nums: 25
+  
+  stack_blocks_random:
+    eval_nums: 25
+  
+  make_toast:
+    data_source: "teleop"
+    robot_self_collision: false
+    eval_nums: 25
+
+  make_toast_random:
+    data_source: "teleop"
+    robot_self_collision: false
+    eval_nums: 25
+
+  organize_table:
+    data_source: "teleop"
+  
+  pack_objects_into_box:
+    data_source: "teleop"
+    eval_nums: 25
+
+  pack_objects_into_box_random:
+    data_source: "teleop"
+    eval_nums: 25
+  
+  play_tic_tac_toe:
+    robot_config: "dual_x5_and_franka_competition"
+  
+  pour_balls_into_vase:
+    data_source: "teleop"
+  
+  pour_liquid_into_cup:
+    data_source: "teleop"
+    eval_nums: 25
+
+  pour_liquid_into_cup_random:
+    data_source: "teleop"
+    eval_nums: 25
+  
+  press_by_number:
+    robot_self_collision: false
+
+  push_T:
+    data_source: "teleop"
+    eval_nums: 25
+
+  push_T_random:
+    data_source: "teleop"
+    eval_nums: 25
+  
+  stack_bowls:
+    data_source: "teleop"
+    eval_nums: 25
+
+  stack_bowls_random:
+    data_source: "teleop"
+    eval_nums: 25
+  
+  store_laptop_and_headphones:
+    data_source: "teleop"
+    render_interval: 5
+    robot_self_collision: false
+    eval_nums: 25
+
+  store_laptop_and_headphones_random:
+    data_source: "teleop"
+    render_interval: 5
+    robot_self_collision: false
+    eval_nums: 25
+  
+  swap_blocks:
+    robot_self_collision: false
+  
+  sweep_blocks:
+    data_source: "teleop"
+    eval_nums: 25
+
+  sweep_blocks_random:
+    data_source: "teleop"
+    eval_nums: 25
+  
+  pick_from_conveyor_by_image:
+    scene_config: "conveyor"

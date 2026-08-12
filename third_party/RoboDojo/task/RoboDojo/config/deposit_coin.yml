@@ -1,0 +1,52 @@
+Geometry:
+  -
+    common:
+      xlim: [-0.43, 0.43]
+      ylim: [-0.2, -0.05]
+      rotate_rand: True
+      rotate_deg: 30
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "vertical_coin_stand"
+
+    select_mode:
+      nums: [1]
+      mode: "allow_duplicate"
+      label: ["vertical_coin_stand"]
+  -
+    common:
+      xlim: [[-0.4, -0.3], [0.3, 0.4]]
+      ylim: [-0.2, -0.15]
+      rotate_rand: True
+      rotate_deg: 15
+      relative_plane: "Table"
+      margin: 0.04
+
+    category:
+      -
+        name: "piggy_bank"
+
+    select_mode:
+      nums: [1]
+      mode: "allow_duplicate"
+      label: ["piggy_bank"]
+
+Rigid:
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      relative_plane: "vertical_coin_stand/vertical_coin_stand/0"
+      check_mode: "point"
+
+    category:
+      -
+        name: "coin"
+
+    select_mode:
+      nums: [1]
+      mode: "allow_duplicate"
+      label: ["coin0"]

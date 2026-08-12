@@ -1,0 +1,75 @@
+train:
+  _target_: fastwam.datasets.lerobot.robot_video_dataset.RobotVideoDataset
+  dataset_dirs:
+    - ${oc.env:FASTWAM_MOLMOSPACES_DATASET,./data/molmospaces/droid_molmoact2}
+  shape_meta:
+    images:
+      - key: observation.images.exterior_1_left
+        raw_shape: [3, 256, 256]
+        shape: [3, 240, 320]
+      - key: observation.images.exterior_2_left
+        raw_shape: [3, 256, 256]
+        shape: [3, 240, 320]
+      - key: observation.images.wrist_left
+        raw_shape: [3, 256, 256]
+        shape: [3, 240, 320]
+    action:
+      - key: default
+        raw_shape: 8
+        shape: 8
+    state:
+      - key: default
+        raw_shape: 8
+        shape: 8
+  num_frames: 11
+  global_sample_stride: 1
+  action_video_freq_ratio: 1
+  video_size: [384, 320]
+  camera_key: null
+  val_set_proportion: 0.01
+  is_training_set: true
+  pretrained_norm_stats: ${oc.env:FASTWAM_MOLMOSPACES_STATS,./data/molmospaces/dataset_stats.json}
+  skip_padding_as_possible: false
+  concat_multi_camera: "robotwin"
+  processor:
+    _target_: fastwam.datasets.lerobot.processors.fastwam_processor.FastWAMProcessor
+    shape_meta: ${data.train.shape_meta}
+    num_obs_steps: ${data.train.num_frames}
+    num_output_cameras: 3
+    action_output_dim: 8
+    proprio_output_dim: 8
+    action_state_transforms: null
+    use_stepwise_action_norm: False
+    norm_default_mode: "z-score"
+    norm_exception_mode: null
+    action_state_merger:
+      _target_: fastwam.datasets.lerobot.transforms.action_state_merger.ConcatLeftAlign
+    train_transforms:
+      - _target_: fastwam.datasets.lerobot.transforms.image.ToTensor
+      - _target_: torchvision.transforms.Resize
+        size: [240, 320]
+    val_transforms:
+      - _target_: fastwam.datasets.lerobot.transforms.image.ToTensor
+      - _target_: torchvision.transforms.Resize
+        size: [240, 320]
+  text_embedding_cache_dir: ./data/text_embeds_cache/molmospaces
+  context_len: 128
+
+val:
+  _target_: fastwam.datasets.lerobot.robot_video_dataset.RobotVideoDataset
+  dataset_dirs:
+    - ${oc.env:FASTWAM_MOLMOSPACES_DATASET,./data/molmospaces/droid_molmoact2}
+  shape_meta: ${data.train.shape_meta}
+  num_frames: ${data.train.num_frames}
+  global_sample_stride: ${data.train.global_sample_stride}
+  action_video_freq_ratio: ${data.train.action_video_freq_ratio}
+  video_size: ${data.train.video_size}
+  camera_key: null
+  val_set_proportion: 0.01
+  is_training_set: false
+  pretrained_norm_stats: ${oc.env:FASTWAM_MOLMOSPACES_STATS,./data/molmospaces/dataset_stats.json}
+  skip_padding_as_possible: false
+  concat_multi_camera: "robotwin"
+  processor: ${data.train.processor}
+  text_embedding_cache_dir: ./data/text_embeds_cache/molmospaces
+  context_len: 128

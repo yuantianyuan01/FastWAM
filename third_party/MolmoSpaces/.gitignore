@@ -1,0 +1,55 @@
+# ignore nfs files
+*.nfs*
+# compiled python files
+*.egg-info
+dist/
+debug/
+debug*/
+assets/*
+
+# If you're adding things to git under external_src, please do this
+# explicitly by running git add -f <files>, this is to prevent
+# accidentally adding external source files to the repo.
+external_src/
+
+build/
+.DS_Store
+*__pycache__*
+.pyc
+*.pyc
+.vscode/
+.vscode
+
+# Any h5 files
+*.h5
+
+external_assets/
+
+*.png
+!docs/**/*.png
+MUJOCO_LOG.TXT
+*logfile.txt
+wandb
+.idea
+
+MUJOCO_LOG.TXT
+debug
+/*.json
+rsync-*
+
+
+checkpoints/
+
+typings
+eval_output/
+experiment_output
+
+
+mlspaces_tests/**/test_output
+mlspaces_tests/**/test_debug_images
+mlspaces_tests/**/profiling_results.txt
+mlspaces_tests/**/test_data
+
+# pytest
+.pytest_cache/
+__pycache__/

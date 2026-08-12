@@ -1,0 +1,21 @@
+{
+    "train":{
+        "tomato_and_egg_stir_fry": ["tomato", "egg"],
+        "garlic_steak_with_mushroom": ["steak", "garlic", "mushroom"],
+        "broccoli_and_cheese_bake": ["broccoli", "cheese"],
+        "carrot_and_corn_salad": ["carrot", "corn"],
+        "bell_pepper_and_eggplant_stir_fry": ["bell_pepper", "eggplant", "garlic"],
+        "fish_with_garlic_and_onion": ["fish", "garlic", "onion"],
+        "sweet_potato_and_cheese_bake": ["sweet_potato", "cheese"],
+        "steak_and_potato_skillet": ["steak", "potato", "onion"],
+        "eggplant_and_tomato_stew": ["eggplant", "tomato", "garlic"],
+        "mushroom_and_broccoli_stir_fry": ["mushroom", "broccoli", "garlic"],
+        "carrot_and_sweet_potato_roast": ["carrot", "sweet_potato", "garlic"]
+    },
+    "eval":{
+        "fish_and_bell_pepper_sauté": ["fish", "bell_pepper", "onion"],
+        "corn_and_cheese_omelette": ["corn", "egg", "cheese"],
+        "tomato_and_onion_salad": ["tomato", "onion"],
+        "eggplant_and_mushroom_gratin": ["eggplant", "mushroom", "cheese"]
+    }
+}

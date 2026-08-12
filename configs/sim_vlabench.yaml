@@ -1,0 +1,43 @@
+# @package _global_
+
+defaults:
+  - train
+  - override /task: vlabench_uncond_3cam_384_1e-4
+  - _self_
+
+ckpt: null
+gpu_id: 0
+
+model:
+  load_text_encoder: true
+  skip_dit_load_from_pretrain: true
+  action_dit_pretrained_path: null
+
+EVALUATION:
+  vlabench_root: ${oc.env:FASTWAM_VLABENCH_ROOT,third_party/VLABench}
+  vlabench_assets_root: ${oc.env:FASTWAM_VLABENCH_ASSETS_ROOT,data/vlabench/assets}
+  task_name: null
+  output_dir: ./evaluate_results/vlabench/${hydra:runtime.choices.task}/${now:%Y%m%d_%H%M%S}
+
+  action_representation: absolute_eef
+  action_horizon: 32
+  replan_steps: 4
+  num_inference_steps: ${eval_num_inference_steps}
+  n_episode: 50
+  eval_track: null
+  save_video: false
+  metrics: ["success_rate", "intention_score", "progress_score"]
+  dataset_stats_path: ${oc.env:FASTWAM_VLABENCH_STATS,null}
+  device: cuda
+
+MULTIRUN:
+  enabled: false
+  num_gpus: 8
+  max_tasks_per_gpu: 1
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null

@@ -1,0 +1,48 @@
+# @package _global_
+
+defaults:
+  - train
+  - override /task: robodojo_real_uncond_3cam_384_1e-4
+  - _self_
+
+ckpt: null
+gpu_id: 0
+
+model:
+  load_text_encoder: true
+  skip_dit_load_from_pretrain: true
+  action_dit_pretrained_path: null
+
+EVALUATION:
+  xpolicylab_root: ${oc.env:FASTWAM_XPOLICYLAB_ROOT,third_party/RoboDojo/XPolicyLab}
+  robodojo_root: ${oc.env:FASTWAM_ROBODOJO_ROOT,third_party/RoboDojo}
+  robodojo_assets_root: ${oc.env:FASTWAM_ROBODOJO_ASSETS_ROOT,data/robodojo/assets}
+  robodojo_data_root: ${oc.env:FASTWAM_ROBODOJO_DATA_ROOT,data/robodojo}
+  bench_name: RoboDojo
+  env_cfg_type: arx_x5
+  action_type: joint
+  seed: 0
+  task_name: null
+  task_file: null
+  output_dir: ./evaluate_results/robodojo_real/${hydra:runtime.choices.task}/${now:%Y%m%d_%H%M%S}
+
+  policy_conda_env: fastwam
+  eval_env_conda_env: RoboDojo
+  eval_env_type: real_world
+  policy_server_host: localhost
+  policy_server_ip: localhost
+  policy_port_base: 6061
+  ckpt_root: ${oc.env:FASTWAM_ROBODOJO_REAL_CKPT_ROOT,checkpoints/robodojo/real}
+  dataset_stats_path: ${oc.env:FASTWAM_ROBODOJO_REAL_STATS,null}
+
+MULTIRUN:
+  enabled: false
+  num_gpus: 1
+  max_tasks_per_gpu: 1
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: .
+  output_subdir: null

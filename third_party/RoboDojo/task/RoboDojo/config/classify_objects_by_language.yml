@@ -1,0 +1,89 @@
+      
+Geometry:
+  -
+    common:
+      xlim: [-0.28, -0.28]
+      ylim: [0.05, 0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+
+
+    category:
+      -
+        name: "basket"
+        index: [2]
+
+    select_mode:
+      nums: [1]
+      mode: "unique"
+      label: ["basket0"]
+
+  -
+    common:
+      xlim: [-0.0, 0.0]
+      ylim: [0.05, 0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+
+
+    category:
+      -
+        name: "basket"
+        index: [3]
+
+    select_mode:
+      nums: [1]
+      mode: "unique"
+      label: ["basket1"]
+
+  -
+    common:
+      xlim: [0.28, 0.28]
+      ylim: [0.05, 0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+
+
+    category:
+      -
+        name: "basket"
+        index: [4]
+
+    select_mode:
+      nums: [1]
+      mode: "unique"
+      label: ["basket2"]
+
+Rigid:
+  -
+    common:
+      xlim: [-0.43, 0.43]
+      ylim: [-0.23, 0.0]
+      rotate_rand: true
+      rotate_deg: 60
+      relative_plane: "Table"
+      margin: 0.01
+
+    category:
+      -
+        name: "watch"
+        index: [4, 5, 6, 7]
+      -
+        name: "car"
+        index: [10, 11, 12, 13, 14, 15]
+      -
+        name: "wooden_toy"
+        index: [0, 1, 2, 3, 4]
+      -
+        name: "pepper"
+        index: [0, 1, 2]
+      -
+        name: "chocolate_bar"
+        index: [0, 1, 2, 3, 4]
+
+    select_mode:
+      mode: "hierarchical"
+      select_category_nums: [3, 3]
+      select_instance_nums: [2, 3]
+      instance_sample_mode: "allow_duplicate"
+      label_prefix: ["cat0", "cat1", "cat2"]

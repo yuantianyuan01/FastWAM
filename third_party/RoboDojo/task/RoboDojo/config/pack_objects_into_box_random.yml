@@ -1,0 +1,90 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, 0.0]
+      rotate_deg: 360
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "car"
+        index: [1, 2, 3, 4, 5]
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["car"]
+
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, 0.0]
+      rotate_deg: 360
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "electric_toothbrush"
+        index: [4, 5, 6]
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["electric_toothbrush"]
+
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, 0.0]
+      rotate_deg: 360
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "hammer"
+        index: [6, 7, 8]
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["hammer"]
+
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, 0.0]
+      rotate_deg: 360
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "shoe"
+        index: [8,9,10,11,12,13,14,15,16,17]
+
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["shoe"]
+
+  -
+    common:
+      xlim: [-0.30, 0.30]
+      ylim: [-0.10, 0.0]
+      rotate_deg: 25
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "box"
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["box"]

@@ -1,0 +1,1 @@
+from VLABench.evaluation.model.policy.openvla import OpenVLA

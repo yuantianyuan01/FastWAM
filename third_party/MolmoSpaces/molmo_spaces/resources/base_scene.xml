@@ -1,0 +1,33 @@
+<!-- Default setup for a mlspaces house -->
+<mujoco model="mlspaces-house">
+  <compiler autolimits="true" boundmass="0" balanceinertia="true" angle="radian"/>
+  <option timestep="0.002" gravity="0 0 -9.8" impratio="10" integrator="implicitfast" cone="elliptic" jacobian="sparse" solver="Newton" noslip_iterations="4">
+    <flag contact="enable" warmstart="enable" energy="enable" multiccd="enable"/>
+  </option>
+  <visual>
+    <global offwidth="1280" offheight="720"/>
+    <headlight ambient="0.35 0.35 0.35" diffuse="0.4 0.4 0.4" active="1"/>
+    <quality shadowsize="16384"/>
+    <map znear="0.001"/>
+  </visual>
+
+  <default>
+    <default class="/">
+      <default class="__VISUAL_MJT__">
+        <geom contype="0" conaffinity="0" group="0" mass="1e-8"/>
+      </default>
+      <default class="__STRUCTURAL_MJT__">
+        <geom contype="8" conaffinity="15" group="4" friction="0.9 0.9 0.001" solref="0.025 1" solimp="0.998 0.998 0.001" density="500" />
+        <default class="__STRUCTURAL_WALL_MJT__">
+          <geom group="3" />
+        </default>
+      </default>
+      <default class="__DYNAMIC_MJT__">
+        <geom conaffinity="15" group="4" friction="0.9 0.9 0.001" solref="0.025 1" solimp="0.998 0.998 0.001" density="500" />
+      </default>
+      <default class="__ARTICULABLE_DYNAMIC_MJT__">
+        <geom contype="0" conaffinity="7" group="4" friction="0.9 0.9 0.001" solref="0.025 1" solimp="0.998 0.998 0.001" density="500" />
+      </default>
+    </default>
+  </default>
+</mujoco>

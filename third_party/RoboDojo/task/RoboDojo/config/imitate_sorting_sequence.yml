@@ -1,0 +1,215 @@
+Geometry:
+  -
+    common:
+      xlim: [-0.4, -0.4]
+      ylim: [-0.15, -0.15]
+      zlim: [0.04, 0.04]
+      qpos: [0.707, 0, 0, 0.707]
+      rotate_rand: False
+      relative_plane: "Table"
+
+
+    category:
+      -
+        name: "basket"
+        index: [5]
+
+    select_mode:
+      nums: [1]
+      mode: "allow_duplicate"
+      label: ["basket0"]
+  -
+    common:
+      xlim: [0.35, 0.35]
+      ylim: [0.25, 0.25]
+      zlim: [0.04, 0.04]
+      qpos: [0.707, 0, 0, 0.707]
+      rotate_rand: False
+      relative_plane: "Table"
+
+
+    category:
+      -
+        name: "basket"
+        index: [5]
+
+    select_mode:
+      nums: [1]
+      mode: "allow_duplicate"
+      label: ["basket1"]
+
+Rigid:
+  -
+    common:
+      xlim: [-0.3, 0.4]
+      ylim: [-0.2, -0.05]
+      rotate_rand: True
+      rotate_deg: 180
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "toy_car"
+        index: [0, 1, 2, 3, 4]
+      -
+        name: "action_camera"
+      -
+        name: "phone"
+      -
+        name: "watch"
+        index: [0, 1, 2]
+      -
+        name: "garage"
+        index: [14, 15]
+
+    select_mode:
+      mode: "hierarchical"
+      select_category_nums: [5, 5]
+      select_instance_nums: [1, 1]
+      instance_sample_mode: "unique"
+      label: ["t0", "t1", "t2", "t3", "t4"]
+
+  -
+    common:
+      xlim: [-0.3, 0.25]
+      ylim: [0.1, 0.3]
+      rotate_rand: True
+      rotate_deg: 180
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "toy_car"
+        index: [0, 1, 2, 3, 4]
+      -
+        name: "action_camera"
+      -
+        name: "phone"
+      -
+        name: "watch"
+        index: [0, 1, 2]
+      -
+        name: "garage"
+        index: [14, 15]
+
+    select_mode:
+      nums: [1]
+      mode: "same_as_label"
+      same_label: "t0"
+      label: ["aim0"]
+  -
+    common:
+      xlim: [-0.3, 0.25]
+      ylim: [0.1, 0.3]
+      rotate_rand: True
+      rotate_deg: 180
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "toy_car"
+        index: [0, 1, 2, 3, 4]
+      -
+        name: "action_camera"
+      -
+        name: "phone"
+      -
+        name: "watch"
+        index: [0, 1, 2]
+      -
+        name: "garage"
+        index: [14, 15]
+
+    select_mode:
+      nums: [1]
+      mode: "same_as_label"
+      same_label: "t1"
+      label: ["aim1"]
+  -
+    common:
+      xlim: [-0.3, 0.25]
+      ylim: [0.1, 0.3]
+      rotate_rand: True
+      rotate_deg: 180
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "toy_car"
+        index: [0, 1, 2, 3, 4]
+      -
+        name: "action_camera"
+      -
+        name: "phone"
+      -
+        name: "watch"
+        index: [0, 1, 2]
+      -
+        name: "garage"
+        index: [14, 15]
+
+    select_mode:
+      nums: [1]
+      mode: "same_as_label"
+      same_label: "t2"
+      label: ["aim2"]
+  -
+    common:
+      xlim: [-0.3, 0.25]
+      ylim: [0.1, 0.3]
+      rotate_rand: True
+      rotate_deg: 180
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "toy_car"
+        index: [0, 1, 2, 3, 4]
+      -
+        name: "action_camera"
+      -
+        name: "phone"
+      -
+        name: "watch"
+        index: [0, 1, 2]
+      -
+        name: "garage"
+        index: [14, 15]
+
+    select_mode:
+      nums: [1]
+      mode: "same_as_label"
+      same_label: "t3"
+      label: ["aim3"]
+  -
+    common:
+      xlim: [-0.3, 0.25]
+      ylim: [0.1, 0.3]
+      rotate_rand: True
+      rotate_deg: 180
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "toy_car"
+        index: [0, 1, 2, 3, 4]
+      -
+        name: "action_camera"
+      -
+        name: "phone"
+      -
+        name: "watch"
+        index: [0, 1, 2]
+      -
+        name: "garage"
+        index: [14, 15]
+
+    select_mode:
+      nums: [1]
+      mode: "same_as_label"
+      same_label: "t4"
+      label: ["aim4"]
+
+Prohibited_Area:
+  -
+    [-0.1, -0.2, 0.1, -0.15]

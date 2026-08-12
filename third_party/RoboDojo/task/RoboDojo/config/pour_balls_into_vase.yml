@@ -1,0 +1,58 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.4, 0.4]
+      ylim: [-0.2, 0.05]
+      rotate_rand: True
+      rotate_deg: 75
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "cup"
+        index: [6]
+
+    select_mode:
+      nums: [1]
+      mode: "unique"
+      label: ["cup"]
+
+  -
+    common:
+      xlim: [-0.02, 0.02]
+      ylim: [-0.02, 0.02]
+      rotate_rand: True
+      rotate_deg: 75
+      relative_plane: "cup"
+      margin: 0
+      check_mode: "enforce"
+      need_check_stable: False
+
+    category:
+      -
+        name: "sphere"
+        index: [0]
+
+    select_mode:
+      nums: [7]
+      mode: "allow_duplicate"
+      label: ["sphere_0", "sphere_1", "sphere_2", "sphere_3", "sphere_4", "sphere_5", "sphere_6"]
+
+Geometry:
+  -
+    common:
+      xlim: [-0.35, 0.35]
+      ylim: [-0.12, 0.05]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "vase"
+        index: [0, 1, 2, 3, 4]
+
+    select_mode:
+      nums: [1]
+      mode: "unique"
+      label: ["vase"]

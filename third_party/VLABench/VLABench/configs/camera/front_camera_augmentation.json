@@ -1,0 +1,65 @@
+[
+    {
+        "translation": [0, 0, 0],
+        "orbital_angle": -0.5236,
+        "orbital_axis": "y",
+        "distance": 1.5,
+        "fovy": 45
+    },
+    {
+        "translation": [0, 0, 0],
+        "orbital_angle": 0,
+        "orbital_axis": "y",
+        "distance": 1.5,
+        "fovy": 45
+    },
+    {
+        "translation": [0, 0, 0],
+        "orbital_angle": 0.5236,
+        "orbital_axis": "y",
+        "distance": 1.5,
+        "fovy": 45
+    },
+    {
+        "translation": [0, 0, 0.4],
+        "orbital_angle": -0.5236,
+        "orbital_axis": "y",
+        "distance": 1.5,
+        "fovy": 45
+    },
+    {
+        "translation": [0, 0, 0.4],
+        "orbital_angle": 0,
+        "orbital_axis": "y",
+        "distance": 1.5,
+        "fovy": 45
+    },
+    {
+        "translation": [0, 0, 0.4],
+        "orbital_angle": 0.5236,
+        "orbital_axis": "y",
+        "distance": 1.5,
+        "fovy": 45
+    },
+    {
+        "translation": [0, 0, -0.4],
+        "orbital_angle": -0.5236,
+        "orbital_axis": "y",
+        "distance": 1.5,
+        "fovy": 45
+    },
+    {
+        "translation": [0, 0, -0.4],
+        "orbital_angle": 0,
+        "orbital_axis": "y",
+        "distance": 1.5,
+        "fovy": 45
+    },
+    {
+        "translation": [0, 0, -0.4],
+        "orbital_angle": 0.5236,
+        "orbital_axis": "y",
+        "distance": 1.5,
+        "fovy": 45
+    }
+]

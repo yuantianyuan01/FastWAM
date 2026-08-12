@@ -1,0 +1,18 @@
+Garment:
+  -
+    common:
+      xlim: [-0.02, 0.02]
+      ylim: [-0.25, -0.18]
+      rotate_deg: 25
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "Top_Long"
+        index: [1, 4, 9]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["target"]

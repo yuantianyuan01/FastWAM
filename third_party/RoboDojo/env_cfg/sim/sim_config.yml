@@ -1,0 +1,6 @@
+decimation: 1
+dt: 0.004
+render_interval: 10
+scene:
+  num_envs: 10
+  env_spacing: 7

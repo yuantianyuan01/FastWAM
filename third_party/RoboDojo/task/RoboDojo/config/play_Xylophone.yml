@@ -1,0 +1,59 @@
+Rigid:
+  -
+    common: 
+      xlim: [-0.45, 0.0]
+      ylim: [-0.2, 0.0]
+      rotate_rand: True
+      rotate_deg: 30
+      relative_plane: "Table"
+      margin: 0.02
+
+    category:
+      -
+        name: "mallet_stand"
+        place_tag: "up_side"
+        xlim: [-0.2, 0.05]
+      -
+        name: "mallet_stand"
+        place_tag: "up"
+        xlim: [-0.45, -0.2]
+      
+    select_mode:
+      nums: 1
+      mode: "same"
+      label: ["mallet_stand"]
+  -
+    common: 
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      rotate_rand: False  
+      relative_plane: "mallet_stand/mallet_stand/0"
+      check_mode: "point"
+
+    category:
+      -
+        name: "mallet"
+
+    select_mode:
+      nums: 1
+      mode: "same"
+      label: ["mallet"]
+
+Geometry:
+  -
+    common:
+      xlim: [-0.1, 0.0]
+      ylim: [-0.05, 0.05]
+      rotate_rand: True
+      rotate_deg: 15
+      relative_plane: "Table"
+      margin: 0.02
+    
+    category:
+      -
+        name: "xylophone"
+
+    select_mode:
+      nums: 1
+      mode: "same"
+      label: ["xylophone"]

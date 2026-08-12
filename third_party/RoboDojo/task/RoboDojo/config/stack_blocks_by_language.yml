@@ -1,0 +1,22 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.43, 0.43]
+      ylim: [-0.25, 0.0]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "cube"
+        index: [1, 2, 3, 7, 8, 9]
+
+    select_mode:
+      nums: 3
+      mode: "unique"
+      label: ["block_0", "block_1", "block_2"]
+ 
+ProhibitedArea:
+  -
+    [0.1, -0.23, -0.1, -0.17]

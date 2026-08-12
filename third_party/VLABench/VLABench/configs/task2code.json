@@ -1,0 +1,791 @@
+{
+    "operating_configs":{ 
+            "select_base":{
+                "task": "select_fruit",
+                "description": "Select the fruit from the list",
+                "meta_variable":
+                [
+                ],
+                "meta_code":"",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "target_entity"
+                        }
+                    },
+                    {
+                        "name": "place",
+                        "params":{
+                            "target_container_name": "target_container"
+                        }
+                    }
+                ]
+
+            },
+            "select_mahjong_base":{
+                "task": "select_mahjong",
+                "description": "Select the mahjong from the list",
+                "meta_variable":
+                [
+                    {
+                        "target_entity": {
+                            "construction_code":"f\"{target_entity[0]}_{target_entity[1]}\""
+                        }
+
+                    }
+                ],
+                "meta_code": "meta_info[\"target_entity\"] = [target_entity]",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "target_entity"
+                        }
+                    },
+                    {
+                        "name": "place",
+                        "params":{
+                            "target_container_name": "target_container"
+                        }
+                    }
+                ]
+            },
+            "select_poker_base":{
+                "task": "select_poker",
+                "description": "Select the poker from the list",
+                "meta_variable":
+                [
+                    {
+                        "prior_eulers": {
+                            "construction_code":"[[-np.pi, 0, 0]]"
+                        }
+
+                    }
+                ],
+                "meta_code": "",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "target_entity",
+                            "prior_eulers":"prior_eulers"
+                        }
+                    },
+                    {
+                        "name": "lift",
+                        "params":{
+                        }
+                    }
+                ]
+            },
+            "add_condiment_base":{
+                "task": "add_condiment",
+                "description": "Add the condiment to the target",
+                "meta_variable":
+                [
+                    {
+                        "target_pos": {
+                            "construction_code":"np.array(env.physics.bind(env.task.entities[target_container].mjcf_model.worldbody).xpos)+np.array([0, 0, 0.2])"
+                        }
+
+                    }
+                ],
+                "meta_code": "",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "target_entity",
+                            "prior_eulers": "[[-np.pi/2, -np.pi/2, np.pi/2]]"
+                        }
+                    },
+                    {
+                        "name": "moveto",
+                        "params":{
+                            "target_pos": "target_pos"
+                        }
+                    },
+                    {
+                        "name": "pour",
+                        "params":{
+                        }
+                    }
+                ]
+            },
+            "select_book_base":{
+                "task": "select_book",
+                "description": "Select the book from the list",
+                "meta_variable":
+                [
+                ],
+                "meta_code": "",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "target_entity",
+                            "prior_eulers": "[[-np.pi/2, -np.pi/2, 0]]"
+                        }
+                    },
+                    {
+                        "name": "pull",
+                        "params":{
+                        }
+                    }
+                ]
+            },
+            "qa_base":{
+                "task": "qa",
+                "description": "Answer the question",
+                "meta_variable":
+                [
+                    {
+                        "target_button":{
+                            "construction_code":"env.task.config_manager.target_button"
+                        }
+
+                    },
+                    {
+                        "target_pos": {
+                            "construction_code":"env.physics.bind(env.task.entities[target_button].mjcf_model.worldbody).xpos"
+                        }
+                    }
+                ],
+                "meta_code": "",
+                "operation_sequence":
+                [
+                    {
+                        "name": "press",
+                        "params":{
+                            "target_pos": "target_pos"
+                        }
+                    }
+                ]
+            },
+            "select_chemistry_tube_base":{
+                "task": "select_chemistry_tube",
+                "description": "Select the chemistry tube from the list",
+                "meta_variable":
+                [
+                ],
+                "meta_code": "",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "target_entity"
+                        }
+                    },
+                    {
+                        "name": "lift",
+                        "params":{
+                        }
+                    }
+                ]
+            },
+            "select_drink_base":{
+                "task": "select_drink",
+                "description": "Select the drink from the list",
+                "meta_variable":
+                [
+                    {
+                        "init_pos, init_quat": {
+                            "construction_code":"np.array(env.robot.get_end_effector_pos(env.physics)), np.array(env.robot.get_end_effector_quat(env.physics))"
+                        }
+                    },
+                    {
+                        "motion_planning_kwargs":{
+                            "construction_code":"dict(q=100, r=100, smooth_method=\"bezier\")"
+                        }
+                    }
+                ],
+                "meta_code": "",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "target_entity",
+                            "prior_eulers": "[[-np.pi/2, -np.pi/2, 0]]",
+                            "max_n_substep": "50",
+                            "motion_planning_kwargs": "motion_planning_kwargs"
+                        }
+                    },
+                    {
+                        "name": "pull",
+                        "params":{
+                        }
+                    }
+                ]
+            },
+            "insert_flower_base":{
+                "task": "insert_flower",
+                "description": "Insert the flower to the target",
+                "meta_variable":
+                [
+                    {
+                        "target_container": {
+                            "construction_code":"env.task.entities[target_container]"
+                        }
+                    },
+                    {
+                        "target_place_point":{
+                            "construction_code":"target_container.get_place_point(env.physics)[-1]"
+                        }
+                    }
+                ],
+                "meta_code": "",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "target_entity"
+                        }
+                    },
+                    {
+                        "name": "lift",
+                        "params":{
+                        }
+                    },
+                    {
+                        "name": "moveto",
+                        "params":{
+                            "target_pos":"target_place_point",
+                            "target_quat":"euler_to_quaternion(-np.pi/2, -np.pi/2, 0)",
+                            "max_n_substep": "50"
+                        }
+                    },
+                    {
+                        "name": "moveto",
+                        "params":{
+                            "target_pos":"target_place_point - np.array([0, 0, 0.15])",
+                            "target_quat":"euler_to_quaternion(-np.pi/2, -np.pi/2, 0)",
+                            "max_n_substep": "50"
+                        }
+                    }
+                ]
+            },
+            "select_ingredient_base":{
+                "task": "select_ingredient",
+                "description": "Select the ingredient from the list",
+                "meta_variable":
+                [
+                ],
+                "meta_code": "",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "target_entity",
+                            "prior_eulers": "[[-np.pi/2, -np.pi/2, 0]]"
+                        }
+                    },
+                    {
+                        "name": "pull",
+                        "params":{
+                            "gripper_state":"np.zeros(2)"
+                        }
+                    },
+                    {
+                        "name": "place",
+                        "params":{
+                            "target_container_name": "target_container"
+                        }
+                    }
+                ]
+            
+            
+            },
+            "cool_drink":{
+                "task": "cool_drink",
+                "description": "Cool the drink",
+                "meta_variable":
+                [
+                ],
+                "meta_code": "",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "init_container"
+                        }
+                    },
+                    {
+                        "name": "open_door",
+                        "params":{
+                            "target_container_name": "init_container"
+                        }
+                    }
+                ]
+            },
+            "find_unseen_object":{
+                "task": "find_unseen_object",
+                "description": "Find the unseen object",
+                "meta_variable":
+                [
+                ],
+                "meta_code": "",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "init_container"
+                        }
+                    },
+                    {
+                        "name": "open_drawer",
+                        "params":{
+                            "target_container_name": "init_container",
+                            "drawer_id": "0"
+                        }
+                    }
+                ]
+            },
+            "hang_picture_on_specific_nail":{
+                "task":"hang_picture_on_specific_nail",
+                "description":"Hang the picture on the specific nail",
+                "meta_variable":
+                [
+                    {
+                        "target_entity":{
+                            "construction_code":"f\"{target_entity.lower()}_painting\""
+                        }
+                    },
+                    {
+                        "target_nail":{
+                            "construction_code":"env.task.config_manager.target_nail"
+                        }
+                    },
+                    {
+                        "nail_pos":{
+                            "construction_code":"np.array(env.physics.bind(env.task.entities[target_nail].mjcf_model.worldbody).xpos)"
+                        }
+                    }
+                ],
+                "meta_code":"",
+                "operation_sequence":
+                [
+                    {
+                        "name": "pick",
+                        "params":{
+                            "target_entity_name": "target_entity",
+                            "prior_eulers": "[[-np.pi, 0, 0]]"
+                        }
+                    },
+                    {
+                        "name": "lift",
+                        "params":{
+                            "gripper_state": "np.zeros(2)"
+                        }
+                    },
+                    {
+                        "name": "moveto",
+                        "params":{
+                            "target_pos": "nail_pos+np.array([0.01, -0.1, 0.02])",
+                            "target_quat": "euler_to_quaternion(-np.pi/2, 0, 0)",
+                            "gripper_state": "np.zeros(2)"
+                        }
+                    },
+                    {
+                        "name": "moveto",
+                        "params":{
+                            "target_pos": "nail_pos+np.array([0.01, -0.0, 0.02])",
+                            "target_quat": "euler_to_quaternion(-np.pi/2, 0, 0)",
+                            "gripper_state": "np.zeros(2)"
+                        }
+                    },
+                    {
+                        "name": "open_gripper",
+                        "params":{}
+                    }
+                ]
+            },
+            "texas_base":{
+                "task": "texas",
+                "description": "Play the texas game",
+                "meta_variable":
+                [
+                    {
+                        "target_entities": {
+                            "construction_code":"env.task.target_entities"
+                        }
+                    },
+                    {
+                        "target_container": {
+                            "construction_code":"\"target_container\""
+                        }
+                    }
+                ],
+                "meta_code": "if isinstance(target_entities, dict):\n   target_entities = list(target_entities.keys())",
+                "operation_sequence":
+                [
+                    {
+                        "name":"for",
+                        "extracted_variable":"entity",
+                        "iterated_variable":"target_entities",
+                        "iterated_variable_type":"list",
+                        "iterated_type":"normal",
+                        "sub_operation_sequence":[
+                            {
+                                "name": "pick",
+                                "params":{
+                                    "target_entity_name": "entity",
+                                    "prior_eulers":"[[-np.pi, 0, 0]]"
+                                }
+                            },
+                            {
+                                "name":"lift",
+                                "params":{
+                                }
+                            },
+                            {
+                                "name": "place",
+                                "params":{
+                                    "target_container_name": "target_container"
+                                }
+                            }
+                        ]
+                    }
+                ]
+
+            },
+            "cluster_book":{
+                "task": "cluster_book",
+                "description": "cluster books",
+                "meta_variable":
+                [
+                    {
+                        "cluster_entities_1": {
+                            "construction_code":"env.task.config_manager.entities_to_load[\"cls_1\"]"
+                        }
+                    },
+                    {
+                        "cluster_entities_2": {
+                            "construction_code":"env.task.config_manager.entities_to_load[\"cls_2\"]"
+                        }
+                    },
+                    {
+                        "shelf": {
+                            "construction_code":"env.task.entities[target_container]"
+                        }
+                    },
+                    {
+                        "recommended_place_point": {
+                            "construction_code":"np.array(env.physics.bind(shelf.mjcf_model.worldbody.find(\"site\", \"placepoint\")).xpos)"
+                        }
+                    },
+                    {
+                        "cluster_positions_1": {
+                            "construction_code":"[[-0.1, recommended_place_point[1], 0.45+recommended_place_point[-1]], [0.1, recommended_place_point[1], 0.45+recommended_place_point[-1]]]"
+                        }
+                    },
+                    {
+                        "cluster_positions_2": {
+                            "construction_code":"[[-0.1, recommended_place_point[1], 0.15+recommended_place_point[-1]], [0.1, recommended_place_point[1], 0.15+recommended_place_point[-1]]]"
+                        }
+                    }
+                ],
+                "meta_code": "",
+                "operation_sequence":[
+                    {
+                        "name": "for",
+                        "extracted_variable": ["entities, poses"],
+                        "iterated_variable": [["cluster_entities_1", "cluster_entities_2"], ["cluster_positions_1", "cluster_positions_2"]],
+                        "iterated_variable_type": "list_of_list",
+                        "iterated_type": "zip",
+                        "sub_operation_sequence": [
+                            {
+                                    "name": "for",
+                                    "extracted_variable": ["i", "entity"],
+                                    "iterated_variable": "entities",
+                                    "iterated_variable_type": "list",
+                                    "iterated_type": "enumerate",
+                                    "sub_operation_sequence": [
+                                        {
+                                            "name":"local_variable",
+                                            "local_variable": "pose",
+                                            "construction_code":"poses[i]"
+
+                                        },
+                                        {
+                                            "name":"local_variable",
+                                            "local_variable": "current_entity",
+                                            "construction_code":"env.task.entities[entity]"
+                                        },
+                                        {
+                                            "name":"local_variable",
+                                            "local_variable": "current_entity_pos",
+                                            "construction_code":"np.array(env.physics.bind(current_entity.mjcf_model.worldbody).xpos)"
+                                        },
+                                        {
+                                            "name": "local_code",
+                                            "local_code": "pose[0] = current_entity_pos[0]"
+                                        },
+                                        {
+                                            "name": "pick",
+                                            "params": {
+                                                "target_entity_name": "entity",
+                                                "prior_eulers": "[[-np.pi, 0, -np.pi/2]]"
+                                            }
+                                        },
+                                        {
+                                            "name": "moveto",
+                                            "params": {
+                                                "target_position": "pose",
+                                                "target_quat": "euler_to_quaternion(-np.pi/2, np.pi/2, 0)",
+                                                "gripper_state": "np.zeros(2)"
+                                            }
+                                        },
+                                        {
+                                            "name": "moveto",
+                                            "params": {
+                                                "target_position": "pose + np.array([0, 0.3, 0])",
+                                                "target_quat": "euler_to_quaternion(-np.pi/2, np.pi/2, 0)",
+                                                "gripper_state": "np.zeros(2)"
+                                            }
+                                        },
+                                        {
+                                            "name": "open_gripper",
+                                            "params": {}
+                                        }
+                                    ]
+                                }
+                           ] 
+                    }
+                    
+                ]
+
+            },
+            "cluster_drink": {
+                "task": "cluster_drink",
+                "debug": true,
+                "description": "cluster drinks and place them in containers",
+                "meta_variable": [
+                    {
+                        "prior_eulers": {
+                            "construction_code": "{'cluster_billiards': [[-np.pi, 0, 0]], 'cluster_toy': [[-np.pi, 0, -np.pi/2]], 'cluster_drink': [[-np.pi, 0, -np.pi/2]]}"
+                        }
+                    },
+                    {
+                        "cluster_entities_1": {
+                            "construction_code": "env.task.config_manager.entities_to_load['cls_1']"
+                        }
+                    },
+                    {
+                        "cluster_entities_2": {
+                            "construction_code": "env.task.config_manager.entities_to_load['cls_2']"
+                        }
+                    },
+                    {
+                        "container_1": {
+                            "construction_code": "target_container[0] + '_0'"
+                        }
+                    },
+                    {
+                        "container_2": {
+                            "construction_code": "target_container[1] + '_1'"
+                        }
+                    }
+                ],
+                "meta_code": "\nif cluster_entities_1[0] == cluster_entities_1[-1]:\n    cluster_entities_1[-1] = cluster_entities_1[-1] + '_1'\nif cluster_entities_2[0] == cluster_entities_2[-1]:    \n    cluster_entities_2[-1] = cluster_entities_2[-1] + '_1'\ncontainer_1 = target_container[0] + \"_0\"\ncontainer_2 = target_container[1] + \"_1\"\n",
+                "operation_sequence": [
+                    {
+                        "name": "for",
+                        "extracted_variable": ["cluster_entities", "container"],
+                        "iterated_variable": [["cluster_entities_1", "cluster_entities_2"], ["container_1", "container_2"]],
+                        "iterated_variable_type": "list_of_list",
+                        "iterated_type": "zip",
+                        "sub_operation_sequence": [
+                            {
+                                "name": "for",
+                                "extracted_variable": ["i", "entity"],
+                                "iterated_variable": "cluster_entities",
+                                "iterated_variable_type": "list",
+                                "iterated_type": "enumerate",
+                                "sub_operation_sequence": [
+                                    {
+                                        "name": "pick",
+                                        "params": {
+                                            "target_entity_name": "entity",
+                                            "prior_eulers": "prior_eulers[task_name]"
+                                        }
+                                    },
+                                    {
+                                        "name": "local_variable",
+                                        "local_variable": "target_container",
+                                        "construction_code": "env.task.entities[container]"
+                                    },
+                                    {
+                                        "name": "local_variable",
+                                        "local_variable": "target_place_point",
+                                        "construction_code": "target_container.get_place_point(env.physics)[-1]"
+                                    },
+                                    {
+                                        "name": "local_code",
+                                        "local_code": "target_place_point[1] += 0.1 * i"
+                                    },
+                                    {
+                                        "name": "lift",
+                                        "params": {
+                                            "gripper_state": "np.zeros(2)"
+                                        }
+                                    },
+                                    {
+                                        "name": "place",
+                                        "params": {
+                                            "target_container_name": "container",
+                                            "target_pos": "target_place_point"
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            "cluster_base": {
+                "task": "cluster_base",
+                "description": "base task for clustering entities",
+                "meta_variable": [
+                    {
+                        "prior_eulers": {
+                            "construction_code": "{'cluster_billiards': [[-np.pi, 0, 0]], 'cluster_toy': [[-np.pi, 0, -np.pi/2]], 'cluster_drink': [[-np.pi, 0, -np.pi/2]]}"
+                        }
+                    },
+                    {
+                        "cluster_entities_1": {
+                            "construction_code": "env.task.config_manager.entities_to_load['cls_1']"
+                        }
+                    },
+                    {
+                        "cluster_entities_2": {
+                            "construction_code": "env.task.config_manager.entities_to_load['cls_2']"
+                        }
+                    },
+                    {
+                        "container_1": {
+                            "construction_code": "target_container[0] + '_0'"
+                        }
+                    },
+                    {
+                        "container_2": {
+                            "construction_code": "target_container[1] + '_1'"
+                        }
+                    }
+                ],
+                "meta_code": "\nif cluster_entities_1[0] == cluster_entities_1[-1]:\n    cluster_entities_1[-1] = cluster_entities_1[-1] + '_1'\nif cluster_entities_2[0] == cluster_entities_2[-1]:    \n    cluster_entities_2[-1] = cluster_entities_2[-1] + '_1'\ncontainer_1 = target_container[0] + \"_0\"\ncontainer_2 = target_container[1] + \"_1\"\n",
+                "operation_sequence": [
+                    {
+                        "name": "for",
+                        "extracted_variable": ["cluster_entities", "container"],
+                        "iterated_variable": [["cluster_entities_1", "cluster_entities_2"], ["container_1", "container_2"]],
+                        "iterated_variable_type": "list_of_list",
+                        "iterated_type": "zip",
+                        "sub_operation_sequence": [
+                            {
+                                "name": "for",
+                                "extracted_variable": ["i", "entity"],
+                                "iterated_variable": "cluster_entities",
+                                "iterated_variable_type": "list",
+                                "iterated_type": "enumerate",
+                                "sub_operation_sequence": [
+                                    {
+                                        "name": "pick",
+                                        "params": {
+                                            "target_entity_name": "entity",
+                                            "prior_eulers": "prior_eulers[task_name]"
+                                        }
+                                    },
+                                    {
+                                        "name": "place",
+                                        "params": {
+                                            "target_container_name": "container"
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+
+        },
+    
+
+    "task_mapping":{
+        "select_fruit": "select_base",
+        "select_fruit_spatial": "select_base",
+        "select_fruit_common_sense": "select_base",
+        "select_fruit_semantic": "select_base",
+        "select_billiards": "select_base",
+        "select_billiards_spatial": "select_base",
+        "select_billiards_common_sense": "select_base",
+        "select_billiards_semantic": "select_base",
+        "select_toy": "select_base",
+        "select_toy_spatial": "select_base",
+        "select_toy_common_sense": "select_base",
+        "select_toy_semantic": "select_base",
+        "put_box_on_painting": "select_base",
+        "select_mahjong": "select_mahjong_base",
+        "select_mahjong_spatial": "select_mahjong_base",
+        "select_mahjong_common_sense": "select_mahjong_base",
+        "select_mahjong_semantic": "select_mahjong_base",
+        "select_unique_type_mahjong": "select_mahjong_base",
+        "select_poker": "select_poker_base",
+        "select_poker_spatial": "select_poker_base",
+        "select_poker_semantic": "select_poker_base",
+        "select_nth_largest_poker": "select_poker_base",
+        "add_condiment": "add_condiment_base",
+        "add_condiment_spatial": "add_condiment_base",
+        "add_condiment_common_sense": "add_condiment_base",
+        "add_condiment_semantic": "add_condiment_base",
+        "select_book":"select_book_base",
+        "select_book_spatial":"select_book_base",
+        "select_specific_type_book":"select_specific_type_book",
+        "select_book_semantic":"select_book_base",
+        "friction_qa":"qa_base",
+        "density_qa":"qa_base",
+        "select_painting":"qa_base",
+        "select_chemistry_tube":"select_chemistry_tube_base",
+        "select_chemistry_tube_spatial":"select_chemistry_tube_base",
+        "select_chemistry_tube_common_sense":"select_chemistry_tube_base",
+        "select_chemistry_tube_semantic":"select_chemistry_tube_base",
+        "select_drink":"select_drink_base",
+        "select_drink_spatial":"select_drink_base",
+        "select_drink_common_sense":"select_drink_base",
+        "select_drink_semantic":"select_drink_base",
+        "insert_flower":"insert_flower_base",
+        "insert_flower_spatial":"insert_flower_base",
+        "insert_flower_common_sense":"insert_flower_base",
+        "insert_flower_semantic":"insert_flower_base",
+        "insert_bloom_flower":"insert_flower_base",
+        "select_ingredient":"select_ingredient_base",
+        "select_ingredient_spatial":"select_ingredient_base",
+        "select_ingredient_common_sense":"select_ingredient_base",
+        "select_ingredient_semantic":"select_ingredient_base",
+        "texas_holdem":"texas_base",
+        "texas_holdem_explore":"texas_base",
+        "cluster_book":"cluster_book",
+        "cluster_drink":"cluster_drink",
+        "cluster_billiards":"cluster_base",
+        "cluster_toy":"cluster_base",
+        "cluster_dessert":"cluster_base",
+        "hang_picture_on_specific_nail":"hang_picture_on_specific_nail",
+        "cool_drink":"cool_drink",
+        "find_unseen_object":"find_unseen_object"
+
+    }
+   
+
+}

@@ -1,0 +1,37 @@
+Geometry:
+  -
+    common:
+      xlim: [[-0.2, -0.1], [0.1, 0.2]]
+      ylim: [-0.2, -0.15]
+      rotate_deg: 30
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "key_slot"
+        index: [0] # asset index
+ 
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["slot"]
+
+Rigid:
+  -
+    common:
+      xlim: [[-0.2, -0.1], [0.1, 0.2]]
+      ylim: [-0.2, -0.1]
+      rotate_deg: 30
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "key"
+        index: [0] # asset index
+ 
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["key"]

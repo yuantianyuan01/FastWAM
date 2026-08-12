@@ -1,0 +1,17 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, 0.07]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      - 
+        name: "bowl"
+        index: [1, 2, 3, 5, 7, 8, 9, 10]
+    
+    select_mode:
+      nums: 3
+      mode: "same"
+      label: ["bowl0", "bowl1", "bowl2"]

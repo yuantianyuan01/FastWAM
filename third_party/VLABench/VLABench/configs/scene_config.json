@@ -1,0 +1,70 @@
+{
+    "apartment_0":{
+        "xml_path":"apartment_0/futuristic_room/futuristic_room.xml",
+        "candidate_pos":[[2, 0, 0], [2, 1.5, 0], [3.2, 1.5, 0]]
+    },
+    "apartment_1":{
+        "xml_path":"apartment_1/an_old_cheap_room_in_chinatown/an_old_cheap_room_in_chinatown.xml",
+        "candidate_pos":[[0, 0, 0], [1, -1.5, 0], [-1.5, 1, 0], [0.5, 1, 0]]
+    },
+    "bedroom_0":{
+        "xml_path":"bedroom_0/bedroom.xml",
+        "candidate_pos":[[0, 1, 0], [-1.8, -1, 0], [1.8, -1, 0]]
+    },
+    "dining_hall_0":{
+        "xml_path":"dining_hall_0/hotelhamilton/hotelhamilton.xml",
+        "candidate_pos":[[-4, 0, 0], [-3.6, -3, 0], [-3.6, 3, 0]]
+    },
+    "dining_hall_2":{
+        "xml_path":"dining_hall_2/resto_ni_teo/resto_ni_teo.xml",
+        "candidate_pos":[[-3, 0, 0], [2.2, 2, 0], [3, 6, 0]]
+    },
+    "greenhouse_0":{
+        "xml_path":"greenhouse_0/greenhouse_park_fbx_free/greenhouse_park_fbx_free.xml",
+        "candidate_pos":[[0, 0, 0], [0, -10, 0], [0, -25, 0]]
+    },
+    "kitchen_0":{
+        "xml_path":"kitchen_0/modern_scandinavian_kitchen_island/modern_scandinavian_kitchen_island.xml",
+        "candidate_pos":[[2.5, 0, 0], [-2, 0, 0], [-2, -2.5, 0]]
+    },
+    "kitchen_1":{
+        "xml_path":"kitchen_1/simple_house_-_kitchen/simple_house_-_kitchen.xml",
+        "candidate_pos":[[-10.2, -5.6, 0], [-8.5, -5.6, 0]]
+    },
+    "kitchen_2":{
+        "xml_path":"kitchen_2/kitchen.xml",
+        "candidate_pos":[[0, 0, 0], [-2, -1, 0], [-2, 1.5, 0]]
+    },
+    "wall_0":{
+        "xml_path":"kitchen_2/kitchen.xml",
+        "candidate_pos":[[0, -3.65, 0]]
+    },
+    "lab_0":{
+        "xml_path":"lab_0/lab.xml",
+        "candidate_pos":[[0, 2.4, 0], [2, 2.4, 0]]
+    },
+    "lab_1":{
+        "xml_path":"lab_1/lab.xml",
+        "candidate_pos":[[2, 2, 0], [6, 2, 0], [-4, -2.5, 0]]
+    },
+    "living_room_0":{
+        "xml_path":"living_room_0/livingroom.xml",
+        "candidate_pos":[[0, 0, 0], [-2, 3.5, 0], [-2, -2.5, 0]]
+    },
+    "medical_room_1":{
+        "xml_path":"medical_room_1/charite_university_hospital_-_operating_room/charite_university_hospital_-_operating_room.xml",
+        "candidate_pos":[[0, 0, 0], [-1, 0, 0], [-1, 1.5, 0], [-1, -1.5, 0]]
+    },
+    "office_0":{
+        "xml_path":"office_0/minimalistic_modern_office/minimalistic_modern_office.xml",
+        "candidate_pos":[[-6, 0, 1.4], [-6, -3, 1.4], [-2, 0, 1.4]]
+    },
+    "store_0":{
+        "xml_path":"store_0/store.xml",
+        "candidate_pos":[[-2.4, 0, 0], [-5, -1, 0], [-7, 1, 0]]
+    },
+    "studyroom_0":{
+        "xml_path":"studyroom_0/studyroom.xml",
+        "candidate_pos":[[0 ,0, 0], [-1, 1, 0], [-1, -1, 0],[-1.5, -1, 0], [-1.5, 1, 0]]
+    }
+}

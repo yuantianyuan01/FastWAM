@@ -1,0 +1,76 @@
+Rigid:
+  -
+    common:
+      xlim: [[-0.30, -0.05], [0.05, 0.30]]
+      ylim: [-0.20, 0.05]
+      rotate_rand: False
+      rotate_deg: 0
+      relative_plane: "Table"
+      qpos: [1, 0, 0, 0]
+      margin: 0.04
+
+    category:
+      -
+        name: "wuliangye"
+        index: [1, 2, 3]
+
+    select_mode:
+      nums: [1]
+      mode: "unique"
+      label: ["bottle"]
+
+  -
+    common:
+      xlim: [-0.05, 0.05]
+      ylim: [-0.1, 0.0]
+      rotate_rand: False
+      rotate_deg: 0
+      relative_plane: "Table"
+      qpos: [1, 0, 0, 0]
+      margin: 0.04
+
+    category:
+      -
+        name: "mug"
+        index: [17, 18, 19]
+
+    select_mode:
+      nums: [1]
+      mode: "unique"
+      label: ["cup"]
+
+Fluid:
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      zlim: [-0.133, -0.133]
+      rotate_rand: False
+      relative_plane: "bottle"
+      check_mode: "enforce"
+
+    category:
+      -
+        name: "wuliangye"
+        index: [0]
+
+    select_mode:
+      nums: [1]
+      mode: "unique"
+      label: ["wine"]
+
+Clutter:
+  -
+    xlim: [[-0.6, 0.6]]
+    ylim: [[-0.5, 0.5]]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 20
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.015
+
+ProhibitedArea:
+  -
+    [-0.35, -0.5, 0.35, -0.4]

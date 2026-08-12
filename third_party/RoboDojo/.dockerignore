@@ -1,0 +1,56 @@
+# Build context excludes for the RoboDojo simulator image.
+# Everything here is skipped when sending the context to the Docker daemon,
+# which keeps the image lean and the build fast. See Dockerfile / docker/README.md.
+
+# ── VCS / IDE / agent / dev scratch ──────────────────────────────────
+.git/
+.gitignore
+.gitmodules
+.github/
+.cursor/
+.claude/
+.pre-commit-config.yaml
+.ruff_cache/
+Dev/
+Untitled
+
+# ── Runtime outputs (regenerated; eval_result is mounted at runtime) ──
+eval_result/
+smoke_results/
+docker/smoke_logs/
+data/
+
+# ── Assets are mounted at runtime, never baked into the image ─────────
+Assets/
+
+# ── Python caches / build artifacts ──────────────────────────────────
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.pytest_cache/
+**/.ruff_cache/
+build/
+dist/
+
+# ── Vendored submodule build artifacts (rebuilt inside the image) ─────
+third_party/**/*.so
+third_party/**/build/
+third_party/**/*.egg-info/
+
+# ── Policy model weights / checkpoints (policy runtime lives outside) ─
+**/checkpoints/
+**/*.pt
+**/*.pth
+**/*.ckpt
+**/*.safetensors
+**/*.onnx
+**/*.engine
+**/*.gguf
+
+# ── Logs / tmp ───────────────────────────────────────────────────────
+**/*.log
+*.tmp
+
+# ── Docker build files themselves (not needed inside the image) ───────
+Dockerfile
+.dockerignore

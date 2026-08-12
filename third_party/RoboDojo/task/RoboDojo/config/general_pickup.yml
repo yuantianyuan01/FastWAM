@@ -1,0 +1,249 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.4, 0.4]
+      ylim: [-0.2, 0.05]
+      rotate_deg: 20
+      rotate_rand: True
+      relative_plane: "Table" # Table surface (initial placement plane)
+
+    category:
+      -
+        name: bell
+        index: [0]
+      -
+        name: pepper
+        index: [0]
+      -
+        name: bicycle
+        index: [0]
+      -
+        name: binoculars
+        index: [0]
+      -
+        name: bottle
+        index: [61]
+      -
+        name: bottle_opener
+        index: [0]
+      -
+        name: bread
+        index: [1]
+      -
+        name: cactus
+        index: [0]
+      -
+        name: can
+        index: [0]
+      -
+        name: car
+        index: [8, 9, 10, 11]
+      -
+        name: cassette
+        index: [0]
+      -
+        name: chick
+        index: [0]
+      -
+        name: chocolate_bag
+        index: [0]
+      -
+        name: chocolate_bar
+        index: [0]
+      -
+        name: clock
+        index: [0]
+      -
+        name: corkscrew
+        index: [0]
+      -
+        name: correction_tape
+        index: [0]
+      -
+        name: cup
+        index: [7]
+      -
+        name: donut
+        index: [0]
+      -
+        name: drawing_compass
+        index: [0]
+      -
+        name: figurine
+        index: [0]
+      -
+        name: frame
+        index: [0]
+      -
+        name: garage
+        index: [17]
+      -
+        name: glasses
+        index: [0]
+      -
+        name: glue
+        index: [0]
+      -
+        name: glue_gun
+        index: [0]
+      -
+        name: grapes
+        index: [0]
+      -
+        name: handled_paint
+        index: [0]
+      -
+        name: headphone
+        index: [0]
+      -
+        name: helicopter
+        index: [0]
+      -
+        name: hoe
+        index: [0]
+      -
+        name: jewelry_box
+        index: [0]
+      -
+        name: juice_carton
+        index: [0]
+      -
+        name: kiwi
+        index: [0]
+      -
+        name: lighter
+        index: [0]
+      -
+        name: mouse
+        index: [8, 9]
+      -
+        name: music_player
+        index: [0]
+      -
+        name: nail_clippers
+        index: [0]
+      -
+        name: noodles
+        index: [0]
+      -
+        name: origami_crane
+        index: [0]
+      -
+        name: owl
+        index: [0]
+      -
+        name: paint_roller
+        index: [0]
+      -
+        name: peeler
+        index: [0]
+      -
+        name: pen
+        index: [10, 11]
+      -
+        name: piler
+        index: [0]
+      -
+        name: plane
+        index: [0]
+      -
+        name: pot
+        index: [1]
+      -
+        name: power_bank
+        index: [2]
+      -
+        name: prayer_bead
+        index: [0]
+      -
+        name: remote
+        index: [0, 1]
+      -
+        name: sachet
+        index: [0]
+      -
+        name: saw
+        index: [0]
+      -
+        name: scan
+        index: [0]
+      -
+        name: scissor
+        index: [0]
+      -
+        name: seashell
+        index: [0]
+      -
+        name: shovel
+        index: [0, 1, 2]
+      -
+        name: sickle
+        index: [0]
+      -
+        name: speaker
+        index: [0]
+      -
+        name: stapler
+        index: [0]
+      -
+        name: tape_dispense
+        index: [0]
+      -
+        name: tape_roll
+        index: [0]
+      -
+        name: teddy_bear
+        index: [0]
+      -
+        name: thread
+        index: [0]
+      -
+        name: tiara
+        index: [0]
+      -
+        name: toy
+        index: [0, 1, 2]
+      -
+        name: trophy
+        index: [0]
+      -
+        name: usb_multip
+        index: [0]
+      -
+        name: waffle
+        index: [0]
+      -
+        name: watch
+        index: [3]
+      -
+        name: watering_can
+        index: [0]
+      -
+        name: whisk
+        index: [0]
+      -
+        name: wooden_toy
+        index: [0]
+      -
+        name: wrench
+        index: [1, 2]
+      -
+        name: yogurt
+        index: [1]
+    
+    select_mode:
+      nums: 1 # spawn count
+      mode: "unique" # asset uniqueness mode
+      label: ["target"] # scene label (unique object name)
+
+Clutter:
+  -
+    xlim: [-0.45, 0.45]
+    ylim: [-0.2, 0.05]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 10
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.02

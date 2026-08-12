@@ -1,0 +1,27 @@
+{
+    "franka":{
+        "xml_path":"franka_emika_panda/panda.xml",
+        "position":[0, -0.4, 0.78],
+        "euler":[0, 0, 1.57],
+        "default_qpos":[0, -1.04, 0, -2.56, 0, 1.55, -2.32, 0.04, 0.04]
+    },
+    "xarm":{
+        "xml_path":"xarm7/xarm7.xml",
+        "position":[0, -0.4, 0.78],
+        "euler":[0, 0, 1.57],
+        "default_qpos":[0, -0.668, 0, 0.55, 0, 1.2, 0, 0]
+    },
+    "h1":{
+        "xml_path":"unitree_h1/mjcf/h1_with_hand.xml",
+        "position":[0, -0.7, 1.1],
+        "euler":[0, 0, 1.57],
+        "default_qpos":[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    "widowx":{
+        "xml_path":"WidowX250S/wx250s.xml",
+        "position":[0, -0.4, 0.78],
+        "euler":[0, 0, 1.57],
+        "default_qpos":[0, -0.36, 0.25, 0, 1, 0, 0, 0]
+    }
+}

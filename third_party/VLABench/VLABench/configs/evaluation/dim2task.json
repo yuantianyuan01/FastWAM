@@ -1,0 +1,60 @@
+{
+    "M&T":[
+        "select_poker",
+        "select_drink",
+        "select_book",
+        "select_toy",
+        "select_fruit",
+        "select_toy_spatial",
+        "add_condiment",
+        "insert_flower",
+        "select_chemistry_tube"
+
+    ],
+    "Spatial":[
+        "select_fruit_spatial",
+        "select_chemistry_tube_spatial",
+        "select_poker_spatial",
+        "select_book_spatial",
+        "add_condiment_spatial",
+        "insert_bloom_flower",
+        "select_drink_spatial"
+    ],
+    "CommonSense":[
+        "select_drink_common_sense",
+        "select_chemistry_tube_common_sense",
+        "add_condiment_common_sense",
+        "insert_flower_common_sense",
+        "select_nth_largest_poker",
+        "select_fruit_common_sense",
+        "select_specific_type_book",
+        "select_toy_common_sense"
+
+    ],
+    "Semantic":[
+        "select_book_semantic",
+        "add_condiment_semantic",
+        "select_chemistry_tube_semantic",
+        "select_toy_semantic",
+        "select_poker_semantic",
+        "select_fruit_semantic",
+        "insert_flower_semantic",
+        "select_drink_semantic"
+
+    ],
+    "PhysicsLaw":[
+        "friction_qa",
+        "density_qa"
+
+    ],
+    "Complex":[
+        "cook_dishes",
+        "book_rearrange",
+        "texas_holdem",
+        "cool_drink",
+        "make_juice",
+        "hammer_nail_and_hang_picture",
+        "take_chemistry_experiment"
+        
+    ]
+}

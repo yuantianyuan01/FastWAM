@@ -1,0 +1,52 @@
+Geometry:
+  -
+    common:
+      xlim: [-0.4, 0.4]
+      ylim: [-0.2, -0.1]
+      rotate_rand: True
+      rotate_deg: 30
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "egg_basket"
+
+    select_mode:
+      nums: [1]
+      mode: "same"
+      label: ["egg_basket"]
+
+Rigid:
+  -
+    common:
+      xlim: [-0.1, 0.1]
+      ylim: [-0.1, 0.1]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "egg_basket/egg_basket/0"
+      margin: 0
+
+    category:
+      -
+        name: "egg"
+
+    select_mode:
+      nums: [4]
+      mode: "allow_duplicate"
+      label: ["target0", "target1", "target2", "target3"]
+
+Articulation:
+  -
+    common:
+      xlim: [-0.05, 0.05]
+      ylim: [-0.2, -0.1]
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "egg_holder"
+
+    select_mode:
+      nums: [1]
+      mode: "allow_duplicate"
+      label: ["egg_holder"]

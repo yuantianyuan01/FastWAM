@@ -1,0 +1,158 @@
+{
+    "book_rearrange": {
+        "pos": "0.0 0. 2.0",
+        "xyaxes": "1.000 -0.0 0.000 0.0 1.000 0.0",
+        "fovy": "25"
+    },
+    "cluster_book": {
+        "pos": "0.0 0. 2.0",
+        "xyaxes": "1.000 -0.0 0.000 0.0 1.000 0.0",
+        "fovy": "25"
+    },
+    "select_book": {
+        "pos": "0.341 -0.263 1.137",
+        "xyaxes": "0.847 0.532 -0.000 -0.042 0.067 0.997"
+    },
+    "select_book_spatial": {
+        "pos": "0.341 -0.263 1.137",
+        "xyaxes": "0.847 0.532 -0.000 -0.042 0.067 0.997"
+    },
+    "select_specific_type_book": {
+        "pos": "0.341 -0.263 1.137",
+        "xyaxes": "0.847 0.532 -0.000 -0.042 0.067 0.997"
+    },
+    "select_book_semantic": {
+        "pos": "0.341 -0.263 1.137",
+        "xyaxes": "0.847 0.532 -0.000 -0.042 0.067 0.997"
+    },
+    "find_unseen_object": {
+        "pos": "0.633 -0.602 2.002",
+        "xyaxes": "0.752 0.659 0.000 -0.499 0.568 0.654",
+        "fovy": "30"
+    },
+    "put_box_on_painting": {
+        "pos": "0.0 0. 2.0",
+        "xyaxes": "1.000 -0.0 0.000 0.0 1.000 0.0"
+    },
+    "select_painting": {
+        "pos": "0.0 0. 2.0",
+        "xyaxes": "1.000 -0.0 0.000 0.0 1.000 0.0",
+        "fovy": "50"
+    },
+    "hang_picture_on_specific_nail": {
+        "pos": "0.0 0. 2.0",
+        "xyaxes": "1.000 -0.0 0.000 0.0 1.000 0.0"
+    },
+    "hammer_nail_and_hang_picture": {
+        "pos": "0.0 0. 2.0",
+        "xyaxes": "1.000 -0.0 0.000 0.0 1.000 0.0"
+    },
+    "add_condiment": {
+        "pos": "0.840 -0.736 1.2",
+        "xyaxes": "0.719 0.695 -0.000 -0.248 0.256 0.934",
+        "fovy": "20"
+    },
+    "add_condiment_spatial": {
+        "pos": "0.840 -0.736 1.2",
+        "xyaxes": "0.719 0.695 -0.000 -0.248 0.256 0.934",
+        "fovy": "20"
+    },
+    "add_condiment_common_sense": {
+        "pos": "0.840 -0.736 1.2",
+        "xyaxes": "0.719 0.695 -0.000 -0.248 0.256 0.934",
+        "fovy": "20"
+    },
+    "add_condiment_semantic": {
+        "pos": "0.840 -0.736 1.2",
+        "xyaxes": "0.719 0.695 -0.000 -0.248 0.256 0.934",
+        "fovy": "20"
+    },
+    "rearrange_tube": {
+        "pos": "-0.016 1.223 1.644",
+        "xyaxes": "-1.000 -0.015 -0.000 0.008 -0.551 0.834",
+        "fovy": "25"
+    },
+    "select_ingredient": {
+        "pos": "0.875 -0.856 1.209",
+        "xyaxes": "0.733 0.681 0.000 -0.134 0.144 0.981",
+        "fovy": "25"
+    },
+    "select_ingredient_spatial": {},
+    "select_ingredient_common_sense": {},
+    "select_ingredient_semantic": {},
+    "set_study_table": {
+        "pos": "0.341 -0.3 1.137",
+        "xyaxes": "0.847 0.532 -0.000 -0.042 0.067 0.997"
+    },
+    "set_dining_table": {
+        "pos": "0 0 2.5",
+        "xyaxes": "1 0 0 0 1 0",
+        "fovy": "25"
+    },
+    "set_dining_left_hand": {
+        "pos": "0 0 2.5",
+        "xyaxes": "1 0 0 0 1 0",
+        "fovy": "25"
+    },
+    "set_dining_chopstick": {
+        "pos": "0 0 2.5",
+        "xyaxes": "1 0 0 0 1 0",
+        "fovy": "25"
+    },
+    "set_dining_chopstick_left_hand": {
+        "pos": "0 0 2.5",
+        "xyaxes": "1 0 0 0 1 0",
+        "fovy": "25"
+    },
+    "select_drink": {
+        "pos": "0 -0.5 0.83",
+        "xyaxes": "1 0 0 0 0 1",
+        "fovy": "25"
+    },
+    "select_drink_spatial": {
+        "pos": "0 -0.5 0.83",
+        "xyaxes": "1 0 0 0 0 1",
+        "fovy": "25"
+    },
+    "select_drink_common_sense": {
+        "pos": "0 -0.5 0.83",
+        "xyaxes": "1 0 0 0 0 1",
+        "fovy": "25"
+    },
+    "select_drink_semantic": {
+        "pos": "0 -0.5 0.83",
+        "xyaxes": "1 0 0 0 0 1",
+        "fovy": "25"
+    },
+    "take_out_cool_drink": {
+        "pos": "0 -0.5 0.83",
+        "xyaxes": "1 0 0 0 0 1",
+        "fovy": "25"
+    },
+    "cool_drink": {
+        "pos": "0 -0.5 0.83",
+        "xyaxes": "1 0 0 0 0 1",
+        "fovy": "25"
+    },
+    "friction_qa": {
+        "fovy": "30"
+    },
+    "density_qa": {
+        "fovy": "30"
+    },
+    "weight_qa": {
+        "fovy": "30"
+    },
+    "thermal_expansion_qa": {
+        "fovy": "30"
+    },
+    "speed_of_sound_qa": {
+        "fovy": "30"
+    },
+    "magnetism_qa": {
+        "fovy": "30"
+    },
+    "reflection_qa": {
+        "fovy": "30"
+    }
+}

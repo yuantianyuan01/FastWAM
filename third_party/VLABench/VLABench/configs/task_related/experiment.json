@@ -1,0 +1,58 @@
+{
+    "expriment_1":{
+        "instruction":"The reaction between NaCl solution and AgNO3 solution results in the formation of a white solid precipitate, AgCl.",
+        "solutions":["NaCl", "AgNO3"]
+    },
+
+    "expriment_2":{
+        "instruction":"The reaction between K2CrO4 solution and NaCl solution results in the formation of a orange-yellow solid precipitate, PbCrO4.",
+        "solutions":["NaCl", "K2CrO4"]
+    },
+
+    "expriment_3":{
+        "instruction":"The reaction between BaCl2 solution and K2CrO4 solution results in the formation of a yellow solid precipitate, BaCrO4.",
+        "solutions":["BaCl2", "K2CrO4"]
+    },
+    "expriment_4":{
+        "instruction":"Neutralize with H2SO4 solution and NaOH solution.",
+        "solutions":["H2SO4", "NaOH"]
+    },
+
+    "expriment_5":{
+        "instruction":"The reaction between H2SO4 solution and Ba(NO3)2 solution results in the formation of a solid precipitate.",
+        "solutions":["H2SO4", "Ba(NO3)2"]
+    },
+    "expriment_6":{
+        "instruction":"The reaction between CuSO4 solution and NaOH solution results in the formation of a blue solid precipitate, Cu(OH)2.",
+        "solutions":["CuSO4", "NaOH"]
+    },
+    "expriment_7":{
+        "instruction":"The reaction between Pb(NO3)2 solution and NaOH solution results in the formation of a white solid precipitate, Pb(OH)2.",
+        "solutions":["Pb(NO3)2", "NaOH"]
+    },
+    "expriment_8":{
+        "instruction":"The reaction between Na2CO3 solution and CaCl2 solution results in the formation of a white solid precipitate, CaCO3.",
+        "solutions":["Na2CO3", "CaCl2"]
+    },
+    "expriment_9":{
+        "instruction":"Neutralize with Na2CO3 solution and HCl solution, producing NaCl and CO2 gas.",
+        "solutions":["Na2CO3", "HCl"]
+    },
+    "expriment_10":{
+        "instruction":"The reaction between KMnO4 solution and HCl solution results in the formation of a brown solid precipitate, MnO2.",
+        "solutions":["KMnO4", "HCl"]
+    },
+
+    "expriment_11":{
+        "instruction":"Neutralize with HCl solution and NaOH solution, producing NaCl and H2O.",
+        "solutions":["HCl", "NaOH"]
+    },
+    "expriment_12":{
+        "instruction":"The reaction between Na2CO3 solution and CaSO4 solution results in the formation of a white solid precipitate, CaCO3.",
+        "solutions":["Na2CO3", "CaSO4"]
+    },
+    "expriment_13":{
+        "instruction":"Neutralize with Na2CO3 solution and HCl solution, producing NaCl and CO2 gas.",
+        "solutions":["Na2CO3", "HCl"]
+    }    
+}

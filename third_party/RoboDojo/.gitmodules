@@ -1,0 +1,12 @@
+[submodule "third_party/IsaacLab"]
+	path = third_party/IsaacLab
+	url = https://github.com/yuechen0614/IsaacLab.git
+	branch = main
+[submodule "third_party/curobo"]
+	path = third_party/curobo
+	url = https://github.com/yuechen0614/curobo.git
+	branch = main
+[submodule "XPolicyLab"]
+	path = XPolicyLab
+	url = https://github.com/XPolicyLab/XPolicyLab.git
+	branch = main

@@ -11,7 +11,9 @@ Official codebase for **Fast-WAM: Do World Action Models Need Test-time Future I
 [![Hugging Face Dataset - LIBERO](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset%20LIBERO-f7c843)](https://huggingface.co/datasets/yuanty/LIBERO-fastwam)
 [![Hugging Face Dataset - RoboTwin](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset%20RoboTwin-f7c843)](https://huggingface.co/datasets/yuanty/robotwin2.0-fastwam)
 
-This repository contains the training and evaluation code for FastWAM on LIBERO / RoboTwin.
+This repository contains the training and evaluation code for FastWAM on LIBERO
+and RoboTwin, with additional integration notes and adapters for RoboDojo,
+VLABench, and MolmoSpaces.
 
 ## Index
 
@@ -30,7 +32,7 @@ This repository contains the training and evaluation code for FastWAM on LIBERO 
 ```text
 FastWAM/
 ├── configs/
-│   ├── data/                 # Dataset configs (LIBERO, RoboTwin, etc.)
+│   ├── data/                 # Dataset configs (LIBERO, RoboTwin, RoboDojo, VLABench, MolmoSpaces)
 │   ├── model/                # Model architecture and component configs
 │   └── task/                 # Task-level configs (training task names)
 ├── scripts/
@@ -41,8 +43,14 @@ FastWAM/
 ├── experiments/
 │   ├── libero/
 │   │   └── run_libero_manager.py
-│   └── robotwin/
-│       └── run_robotwin_manager.py
+│   ├── robotwin/
+│   │   └── run_robotwin_manager.py
+│   ├── robodojo/
+│   │   └── run_robodojo_manager.py
+│   ├── vlabench/
+│   │   └── fastwam_policy.py
+│   └── molmospaces/
+│       └── fastwam_policy.py
 ├── src/fastwam/              # Core code
 ├── runs/                     # Training outputs (ckpt, logs)
 ├── checkpoints/              # Pretrained or external checkpoints
@@ -191,6 +199,27 @@ You still need to follow the official RoboTwin instructions from the
 ln -sfn "$(pwd)/experiments/robotwin/fastwam_policy" "$(pwd)/third_party/RoboTwin/policy/fastwam_policy"
 ```
 
+For `RoboDojo`, install the vendored RoboDojo/XPolicyLab environment and assets
+first. Then link the FastWAM policy adapter into XPolicyLab:
+
+```bash
+ln -sfn "$(pwd)/experiments/robodojo/fastwam_policy" \
+  "$(pwd)/third_party/RoboDojo/XPolicyLab/policy/FastWAM"
+```
+
+Use repository-relative roots for large data, assets, and checkpoints:
+
+```bash
+export FASTWAM_ROOT="$(pwd)"
+export ROBODOJO_ROOT="$(pwd)/third_party/RoboDojo"
+export ROBODOJO_ASSETS_ROOT="$(pwd)/data/robodojo/assets"
+export FASTWAM_CKPT_ROOT="$(pwd)/checkpoints/robodojo/sim"
+```
+
+VLABench and MolmoSpaces follow the same repository convention: official code is
+vendored in `third_party/`, while large data/assets/checkpoints are kept under
+`data/<benchmark>/` and `checkpoints/<benchmark>/` or symlinked there.
+
 Optional: evaluate released LIBERO checkpoint:
 
 The released `LIBERO` / `RoboTwin` evaluation managers default to `8` GPUs
@@ -216,6 +245,31 @@ python experiments/robotwin/run_robotwin_manager.py \
   MULTIRUN.num_gpus=8
 ```
 
+RoboDojo evaluation uses XPolicyLab's websocket policy-server interface:
+
+```bash
+python experiments/robodojo/run_robodojo_manager.py \
+  ckpt=<run_name> \
+  EVALUATION.xpolicylab_root=third_party/RoboDojo/XPolicyLab \
+  EVALUATION.policy_conda_env=fastwam \
+  EVALUATION.eval_env_conda_env=RoboDojo \
+  EVALUATION.dataset_stats_path=checkpoints/robodojo/sim/<run_name>/dataset_stats.json \
+  MULTIRUN.num_gpus=8
+```
+
+See [`experiments/robodojo/README.md`](./experiments/robodojo/README.md) for the
+expected data, assets, and checkpoint roots.
+
+VLABench support uses relative EEF actions. See
+[`experiments/vlabench/README.md`](./experiments/vlabench/README.md) for the
+expected LeRobot data fields, assets root, and official-evaluation adapter.
+
+MolmoSpaces support uses relative joint actions and the official JSON benchmark
+pipeline. See
+[`experiments/molmospaces/README.md`](./experiments/molmospaces/README.md) for
+the expected DROID/MolmoAct-style data fields, assets/cache roots, and
+leaderboard adapter.
+
 For faster RoboTwin evaluation, we have enabled `EVALUATION.skip_get_obs_within_replan=true` in [`configs/sim_robotwin.yaml`](./configs/sim_robotwin.yaml).
 This skips RGB rendering while consecutively executing an action chunk within one replan window, which speeds up evaluation but makes the saved video look very low-FPS.
 Set it to `false` if you want to save a fully rendered video.
@@ -234,6 +288,14 @@ python scripts/precompute_text_embeds.py task=libero_uncond_2cam224_1e-4
 
 # RoboTwin
 python scripts/precompute_text_embeds.py task=robotwin_uncond_3cam_384_1e-4
+
+# RoboDojo simulation / real robot
+python scripts/precompute_text_embeds.py task=robodojo_sim_uncond_3cam_384_1e-4
+python scripts/precompute_text_embeds.py task=robodojo_real_uncond_3cam_384_1e-4
+
+# VLABench / MolmoSpaces
+python scripts/precompute_text_embeds.py task=vlabench_uncond_3cam_384_1e-4
+python scripts/precompute_text_embeds.py task=molmospaces_uncond_3cam_384_1e-4
 ```
 
 For multi-GPU:
@@ -254,6 +316,14 @@ bash scripts/train_zero1.sh 8 task=libero_uncond_2cam224_1e-4
 
 # RoboTwin
 bash scripts/train_zero1.sh 8 task=robotwin_uncond_3cam_384_1e-4
+
+# RoboDojo simulation / real robot
+bash scripts/train_zero1.sh 8 task=robodojo_sim_uncond_3cam_384_1e-4
+bash scripts/train_zero1.sh 8 task=robodojo_real_uncond_3cam_384_1e-4
+
+# VLABench / MolmoSpaces
+bash scripts/train_zero1.sh 8 task=vlabench_uncond_3cam_384_1e-4
+bash scripts/train_zero1.sh 8 task=molmospaces_uncond_3cam_384_1e-4
 ```
 
 For LIBERO, we train on a single node with 8 GPUs. For RoboTwin, we use 64 GPUs to accelerate training. You can try reducing the GPU count or training epochs.
@@ -282,16 +352,33 @@ Then run RoboTwin evaluation:
 python experiments/robotwin/run_robotwin_manager.py task={task_name} ckpt={ckpt_path}
 ```
 
+Then run RoboDojo evaluation:
+
+```bash
+python experiments/robodojo/run_robodojo_manager.py \
+  ckpt={run_name} \
+  EVALUATION.xpolicylab_root=third_party/RoboDojo/XPolicyLab \
+  EVALUATION.dataset_stats_path=checkpoints/robodojo/sim/{run_name}/dataset_stats.json
+```
+
 Common `task_name` examples:
 
 ```text
 libero_uncond_2cam224_1e-4
 robotwin_uncond_3cam_384_1e-4
+robodojo_sim_uncond_3cam_384_1e-4
+robodojo_real_uncond_3cam_384_1e-4
+vlabench_uncond_3cam_384_1e-4
+molmospaces_uncond_3cam_384_1e-4
 ```
 
 ## Acknowledgements
 
-The RoboTwin evaluation code in this repository is adapted from the official [RoboTwin repository](https://github.com/RoboTwin-Platform/RoboTwin). We thank the RoboTwin team for releasing their codebase and assets.
+The RoboTwin evaluation code in this repository is adapted from the official
+[RoboTwin repository](https://github.com/RoboTwin-Platform/RoboTwin). RoboDojo,
+VLABench, and MolmoSpaces integrations rely on their official benchmark code
+vendored under `third_party/`. We thank the benchmark authors for releasing
+their codebases and assets.
 
 ## BibTeX
 

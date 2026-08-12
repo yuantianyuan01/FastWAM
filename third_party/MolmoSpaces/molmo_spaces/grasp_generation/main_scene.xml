@@ -1,0 +1,59 @@
+<mujoco model="iiwa14_scene">
+    <statistic extent="0.3" center="0 0.075 0"/>
+    <size njmax="5000" nconmax="5000"/>
+    <compiler autolimits="true" boundmass="0" balanceinertia="true" angle="radian"/>
+
+    <option timestep="0.002" gravity="0 0 0" impratio="10" integrator="implicitfast" cone="elliptic" jacobian="sparse"
+        solver="Newton" noslip_iterations="3">
+        <flag contact="enable" warmstart="enable" energy="enable" multiccd="enable"/>
+    </option>
+
+    <visual>
+        <headlight diffuse="0.3 0.3 0.3" ambient="0.2 0.2 0.2" specular="0 0 0"/>
+        <rgba haze="0.15 0.25 0.35 1"/>
+        <global azimuth="-120" elevation="-20" offwidth="1280" offheight="720"/>
+        <quality shadowsize="0"/>
+    </visual>
+
+    <asset>
+        <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+        <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+            markrgb="0.8 0.8 0.8" width="300" height="300"/>
+        <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+
+        <texture type="2d" name="floor_texture" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+            markrgb="0.8 0.8 0.8" width="300" height="300"/>
+
+        <material name="floor_material" texture="floor_texture" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+    </asset>
+
+    <worldbody>
+
+        <site name="x_axis" pos="0.1 0 0" size="0.01" rgba="1 0 0 1"/>
+        <site name="y_axis" pos="0 0.1 0" size="0.01" rgba="0 1 0 1"/>
+        <site name="z_axis" pos="0 0 0.1" size="0.01" rgba="0 0 1 1"/>
+        <site name="origin" pos="0 0 0.2" size="0.01" rgba="1 1 1 1"/>
+
+
+        <light pos="0 0 4.5" dir="0 0 -1" directional="true"/>
+        <light pos="0 0 -4.5" dir="0 0 1" directional="true"/>
+        <light pos="0 4.5 0" dir="0 -1 0" directional="true"/>
+        <light pos="0 -4.5 0" dir="0 1 0" directional="true"/>
+
+        <light pos="4.5 0 0" dir="-1 0 0" directional="true"/>
+        <light pos="-4.5 0 0" dir="1 0 0" directional="true"/>
+
+        <body name="fixed_camera_body" pos="0 0 0.02">
+            <camera name="fixed" pos="0 -0.3 -0.2" euler="1.0 0.0 3.14" fovy="60"/>
+            <!-- <geom type="sphere" size=" 0.05" pos=" 0 0 0" rgba=" 1 0 0 1"/>
+            <geom type="sphere" size=" 0.03" pos=" 0 0 0.1" rgba=" 0 0 1 1"/> -->
+        </body>
+
+        <!-- <geom name="wall" type="plane" size="2 2 0.01" pos="0 0 0" euler="0 0 0" rgba=".8 .8 .8 1"/>
+        <geom name="wall2" type="plane" size="2 2 0.01" pos="0 0 0" euler="0 0 0" rgba=".8 .8 .8 1"/> -->
+
+
+    </worldbody>
+
+
+</mujoco>

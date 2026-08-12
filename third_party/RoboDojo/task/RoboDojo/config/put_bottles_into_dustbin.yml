@@ -1,0 +1,46 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.35, 0.45]
+      ylim: [-0.25, 0.02]
+      rotate_rand: True
+      rotate_deg: 60
+      relative_plane: "Table"
+      margin: 0.02
+
+    category:
+      -
+        name: "bottle"
+        index: [0, 2, 5, 22, 25, 41, 50, 55, 59, 60]
+        xlim: [-0.35, 0.05]
+        rotate_deg: [-90, 30]
+      -
+        name: "bottle"
+        index: [0, 2, 5, 22, 25, 41, 50, 55, 59, 60]
+        xlim: [0.05, 0.45]
+        rotate_deg: [-30, 90]
+
+    select_mode:
+      nums: [4]
+      mode: "unique"
+      label: ["bottle0", "bottle1", "bottle2", "bottle3"]
+
+Geometry:
+  -
+    common:
+      xlim: [-0.63, -0.63]
+      ylim: [-0.1, -0.1]
+      zlim: [0.35, 0.35]
+      rotate_rand: False
+      qpos: [1, 0, 0, 0]
+      relative_plane: "Ground"
+
+    category:
+      -
+        name: "dustbin"
+        index: [0]
+
+    select_mode:
+      nums: [1]
+      mode: "same"
+      label: ["dustbin"]

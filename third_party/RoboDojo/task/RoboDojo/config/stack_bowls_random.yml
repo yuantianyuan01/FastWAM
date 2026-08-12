@@ -1,0 +1,43 @@
+Rigid:
+  -
+    common:
+      xlim: [-0.45, 0.45]
+      ylim: [-0.25, 0.07]
+      rotate_rand: False
+      relative_plane: "Table"
+
+    category:
+      -
+        name: "bowl"
+        index: [11, 12, 13, 14, 15]
+
+    select_mode:
+      nums: 3
+      mode: "same"
+      label: ["bowl0", "bowl1", "bowl2"]
+
+Clutter:
+  -
+    xlim: [-0.6, 0.6]
+    ylim: [[-0.5, -0.15], [0.05, 0.5]]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 10
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.015
+  -
+    xlim: [[-0.6, -0.1], [0.1, 0.6]]
+    ylim: [-0.15, 0.05]
+    relative_plane: "Table"
+    yaml_path: "Clutter/clutter.yml"
+    nums: 10
+    mode: "category_unique" # allow_duplicate (default), unique, category_unique
+    rotate_rand: True
+    rotate_deg: 30
+    margin: 0.015
+
+ProhibitedArea:
+  -
+    [-0.35, -0.5, 0.35, -0.4]

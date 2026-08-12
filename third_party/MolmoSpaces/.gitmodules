@@ -1,0 +1,3 @@
+[submodule "external_src/Manifold"]
+	path = external_src/Manifold
+	url = https://github.com/hjwdzh/Manifold.git

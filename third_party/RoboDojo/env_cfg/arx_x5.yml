@@ -1,0 +1,19 @@
+config_name: arx_x5
+
+config:
+  sim: sim_config
+  scene: default
+  robot: dual_x5
+  camera: camera_config
+
+observation:
+  collect_freq: 25
+  robot:
+    joint_states: true
+    world_ee_state: true
+  vision:
+    approximate_depth: false
+    depth: false
+    intrinsic_matrix: false
+    extrinsic_matrix: false
+    shape: true
