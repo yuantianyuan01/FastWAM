@@ -64,7 +64,7 @@ pip install -e .
 
 This step is required before both training and inference.
 
-Step 1: set the Wan model directory first (opional, default `./checkpoints`):
+Step 1: set the Wan model directory first (optional, default `./checkpoints`):
 
 ```bash
 mkdir -p checkpoints
