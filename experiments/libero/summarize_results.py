@@ -5,6 +5,16 @@ from collections import defaultdict
 import pandas as pd
 import math
 
+
+def calculate_trial_weighted_success_rate(suite_stats):
+    """Calculate the success rate across all trials in all task suites."""
+    total_trials = sum(stats['total_trials'] for stats in suite_stats.values())
+    if total_trials == 0:
+        return 0.0
+    total_successes = sum(stats['total_successes'] for stats in suite_stats.values())
+    return total_successes / total_trials * 100
+
+
 def format_time(seconds):
     """Format seconds as a human-readable duration string.
 
@@ -161,6 +171,7 @@ def summarize_results(output_dir):
                 overall_psnr_sum += stats['psnr_sum']
                 overall_psnr_count += stats['psnr_count']
     
+    trial_weighted_success_rate = calculate_trial_weighted_success_rate(suite_stats)
     if total_suites > 0:
         print("\nOverall statistics:")
         avg_success_rate = total_success_rate/total_suites
@@ -171,6 +182,7 @@ def summarize_results(output_dir):
             overall_avg_psnr = overall_psnr_sum / overall_psnr_count if overall_psnr_count > 0 else None
         
         print(f"- Average success rate: {avg_success_rate:.2f}%")
+        print(f"- Trial-weighted success rate: {trial_weighted_success_rate:.2f}%")
         print(f"- Total time: {format_time(total_time)}")
         print(f"- Average time per task: {format_time(avg_task_time)}")
         print(f"- Longest task time: {format_time(max_task_time)}")
@@ -261,6 +273,7 @@ def summarize_results(output_dir):
     summary_file = os.path.join(output_dir, 'summary.json')
     overall_stats = {
         'average_success_rate': total_success_rate/total_suites if total_suites > 0 else 0,
+        'trial_weighted_success_rate': trial_weighted_success_rate,
         'total_time': total_time,
         'average_task_time': total_time/sum(s['total_tasks'] for s in suite_stats.values()) if suite_stats else 0,
     }
