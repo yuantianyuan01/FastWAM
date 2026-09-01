@@ -5,6 +5,7 @@ import torch
 from fastwam.utils.logging_config import get_logger
 
 from .fastwam import FastWAM
+from .noise import make_inference_generator
 
 logger = get_logger(__name__)
 
@@ -150,8 +151,8 @@ class FastWAMJoint(FastWAM):
         latent_h = height // self.vae.upsampling_factor
         latent_w = width // self.vae.upsampling_factor
 
-        video_generator = None if seed is None else torch.Generator(device=rand_device).manual_seed(seed)
-        action_generator = None if seed is None else torch.Generator(device=rand_device).manual_seed(seed)
+        action_generator = make_inference_generator(seed, rand_device)
+        video_generator = make_inference_generator(seed, rand_device, stream_offset=1)
         latents_video = torch.randn(
             (1, self.vae.model.z_dim, latent_t, latent_h, latent_w),
             generator=video_generator,
