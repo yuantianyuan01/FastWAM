@@ -10,6 +10,7 @@ from fastwam.utils.logging_config import get_logger
 from .action_dit import ActionDiT
 from .helpers.loader import load_wan22_ti2v_5b_components
 from .mot import MoT
+from .noise import make_inference_generator
 from .schedulers.scheduler_continuous import WanContinuousFlowMatchScheduler
 
 logger = get_logger(__name__)
@@ -849,8 +850,11 @@ class FastWAM(torch.nn.Module):
         latent_h = height // self.vae.upsampling_factor
         latent_w = width // self.vae.upsampling_factor
 
-        video_generator = None if seed is None else torch.Generator(device=rand_device).manual_seed(seed)
-        action_generator = None if seed is None else torch.Generator(device=rand_device).manual_seed(seed)
+        # Keep the action stream aligned with `infer_action`, while assigning video
+        # noise a distinct deterministic stream. Restarting both generators from
+        # the same seed makes the action noise an exact prefix of the video noise.
+        action_generator = make_inference_generator(seed, rand_device)
+        video_generator = make_inference_generator(seed, rand_device, stream_offset=1)
         latents_video = torch.randn(
             (1, self.vae.model.z_dim, latent_t, latent_h, latent_w),
             generator=video_generator,
@@ -1023,7 +1027,7 @@ class FastWAM(torch.nn.Module):
                 raise ValueError(f"`proprio` last dim must be {self.proprio_dim}, got {proprio.shape[1]}")
             proprio = proprio.to(device=self.device, dtype=self.torch_dtype)
 
-        generator = None if seed is None else torch.Generator(device=rand_device).manual_seed(seed)
+        generator = make_inference_generator(seed, rand_device)
         latents_action = torch.randn(
             (1, action_horizon, self.action_expert.action_dim),
             generator=generator,
