@@ -13,128 +13,47 @@ Official codebase for **Fast-WAM: Do World Action Models Need Test-time Future I
 
 This repository contains the training and evaluation code for FastWAM on LIBERO / RoboTwin.
 
-## What's New
+## Intel XPU Support
 
-FastWAM is now faster, better suited to large-scale datasets, and more flexible
-for research. This update brings substantially faster training and inference,
-native LeRobot v3.0 support, and a new model that can switch between acting with
-and without future imagination.
+FastWAM inference has been validated on Intel GPUs through PyTorch XPU. The
+repository does not require code or configuration changes for XPU inference;
+select the runtime device when invoking a preprocessing or evaluation command.
 
-### ⚡ Approximately 2x faster inference
+### Install a PyTorch XPU build
 
-End-to-end FastWAM inference is now approximately **2x faster**, including text
-encoding and VAE encoding:
-
-- **NVIDIA H20:** 470 ms → 210 ms
-- **NVIDIA RTX 4090:** 190 ms → 110 ms
-
-The accelerated path is enabled by default for LIBERO with
-`EVALUATION.compile_action_infer=true`. We gratefully acknowledge
-[PR #43](https://github.com/yuantianyuan01/FastWAM/pull/43) for proposing the
-optimization ideas that inspired this work. Existing checkpoints remain fully
-compatible with the accelerated inference path.
-
-### 🚀 Approximately 10% faster training
-
-FastWAM training is approximately **10% faster on NVIDIA H20 GPUs**. The new
-training path combines a compiled denoising core with batched VAE encoding and
-a lightweight CUDA Graph backend. Enable denoising compilation with:
+The default installation below uses CUDA wheels. For an Intel GPU, install the
+XPU wheels instead:
 
 ```bash
-bash scripts/train_zero1.sh 8 task=libero_uncond_2cam224_1e-4 \
-  model.compile_training_denoise=true
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+pip install -e .
 ```
 
-Both cached text embeddings and on-the-fly T5 encoding are supported. The
-latter skips text-cache preprocessing and is more convenient, at the cost of
-approximately 10% lower training throughput.
+Do not install CUDA-only acceleration packages for an XPU environment unless
+another dependency explicitly requires them. FastWAM uses PyTorch operators on
+XPU, so an existing CUDA `flash-attn` installation is not needed for inference.
 
-### 📦 Native LeRobot 2.1 and 3.0 support
+### Select the XPU device
 
-FastWAM now supports both **LeRobot 2.1 and LeRobot 3.0** datasets. LeRobot 3.0's
-chunked parquet and video layout scales better to large datasets, with faster
-data loading and dataset-statistics computation as the dataset grows.
-
-Download the released LeRobot 3.0 LIBERO dataset from
-[Hugging Face](https://huggingface.co/datasets/yuanty/LIBERO-fastwam) and select
-the v3.0 data config:
+Pass `--device xpu` wherever a FastWAM command exposes the device option. For
+example, the ActionDiT preprocessing step becomes:
 
 ```bash
-huggingface-cli download yuanty/LIBERO-fastwam \
-  --repo-type dataset \
-  --include "lerobot_v30/**" \
-  --local-dir ./data
-
-python scripts/train.py task=libero_uncond_2cam224_1e-4 \
-  data=libero_2cam_lerobot_v30
+python scripts/preprocess_action_dit_backbone.py \
+  --model-config configs/model/fastwam.yaml \
+  --output checkpoints/ActionDiT_linear_interp_Wan22_alphascale_1024hdim.pt \
+  --device xpu \
+  --dtype bfloat16
 ```
 
-For another LeRobot 3.0 dataset, copy
-`configs/data/libero_2cam_lerobot_v30.yaml`, update `train.dataset_dirs`, and
-select the new config with `data=<config_name>`. Existing LeRobot 2.1 configs
-continue to work unchanged.
+For evaluation managers, use the same checkpoint and task commands shown below;
+the branch's inference path supports XPU execution. If a local wrapper exposes
+a device argument, set it to `xpu`; otherwise leave device placement to the
+manager and model runtime.
 
-### 🧠 Optional IDM: one model, two thinking modes
-
-Optional IDM is a new FastWAM variant that supports **two inference modes in a
-single model**:
-
-- **IDM mode:** imagine the future video first, then predict actions.
-- **First-frame mode (Fast-WAM):** skip test-time future imagination and predict
-  actions directly from the current observation.
-
-Download the released Optional IDM checkpoint from
-[Hugging Face](https://huggingface.co/yuanty/fastwam):
-
-```bash
-huggingface-cli download yuanty/fastwam \
-  libero_optional_idm_2cam224.pt \
-  libero_optional_idm_2cam224_dataset_stats.json \
-  --local-dir ./checkpoints/fastwam_release
-```
-
-Train the optional-IDM variant once:
-
-```bash
-bash scripts/train_zero1.sh 8 task=libero_optional_idm_2cam224_1e-4
-```
-
-Then choose either inference mode at evaluation time without retraining, making
-it easy to study when future imagination helps:
-
-```bash
-python experiments/libero/run_libero_manager.py \
-  task=libero_optional_idm_2cam224_1e-4 \
-  ckpt=./checkpoints/fastwam_release/libero_optional_idm_2cam224.pt \
-  EVALUATION.dataset_stats_path=./checkpoints/fastwam_release/libero_optional_idm_2cam224_dataset_stats.json \
-  EVALUATION.sigma_shift=1.0 \
-  +EVALUATION.action_infer_mode=idm \
-  MULTIRUN.num_gpus=8
-```
-
-Replace `idm` with `first_frame` to use the Fast-WAM inference mode.
-
-The released checkpoint, trained with action scheduler shift `1.0`, achieves
-the following success rates on the full LIBERO benchmark (40 tasks, 50 episodes
-per task):
-
-| Inference mode | Spatial | Goal | Object | Long | Average |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| IDM | 99.0% | 98.6% | 99.6% | 97.0% | **98.55%** |
-| First-frame (Fast-WAM) | 98.2% | 97.8% | 99.2% | 95.8% | **97.75%** |
-
-### Other improvements
-
-- The action scheduler shift now defaults to `1.0` for both training and
-  evaluation; shifts from `1.0` to `3.0` perform similarly in our experiments.
-  When evaluating the original released checkpoints, set
-  `EVALUATION.sigma_shift=5.0` to reproduce the original setting.
-- Upgraded LIBERO evaluation with persistent model workers, dynamic task
-  scheduling, bad-GPU quarantine, failure recovery, and resumable results.
-- Optimized action-only inference for IDM and Optional IDM: `infer_action`
-  returns actions and video latents directly, while VAE decoding is performed
-  only by `infer_joint` when video output is requested, eliminating redundant
-  computation in action-only deployments.
+CUDA remains the recommended path for the fastest benchmark runs. On XPU,
+outputs should follow the same inference path, with small floating-point
+differences possible from backend-specific operation ordering.
 
 ## Index
 
