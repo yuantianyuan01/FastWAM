@@ -35,6 +35,7 @@ EVALUATION:
   negative_prompt: ""
   rand_device: cpu
   tiled: false
+  compile_action_infer: true
 
   # Optional external inputs
   dataset_stats_path: null
@@ -49,7 +50,6 @@ MULTIRUN:
     - libero_spatial
     - libero_object
   num_gpus: 8
-  max_tasks_per_gpu: 2
 
 hydra:
   job:

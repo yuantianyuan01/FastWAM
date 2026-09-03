@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import math
 from typing import Any, Dict, Tuple, Optional
 from einops import rearrange
-from .helpers.gradient import gradient_checkpoint_forward
 
 from fastwam.utils.logging_config import get_logger
 
@@ -53,12 +52,12 @@ def precompute_freqs_cis(dim: int, end: int = 1024, theta: float = 10000.0):
 
 
 def rope_apply(x, freqs, num_heads):
-    x = rearrange(x, "b s (n d) -> b s n d", n=num_heads)
-    x_out = torch.view_as_complex(x.to(torch.float64).reshape(
-        x.shape[0], x.shape[1], x.shape[2], -1, 2))
-    freqs = freqs.to(torch.complex64) if freqs.device.type == "npu" else freqs
-    x_out = torch.view_as_real(x_out * freqs).flatten(2)
-    return x_out.to(x.dtype)
+    batch_size, seq_len, _ = x.shape
+    x_heads = x.view(batch_size, seq_len, num_heads, -1)
+    x_out = torch.view_as_complex(
+        x_heads.to(torch.float64).reshape(batch_size, seq_len, num_heads, -1, 2)
+    )
+    return torch.view_as_real(x_out * freqs).flatten(2).to(x.dtype)
 
 
 def create_group_causal_attn_mask(
@@ -397,6 +396,23 @@ class WanVideoDiT(torch.nn.Module):
         self.use_gradient_checkpointing = use_gradient_checkpointing
         if self.use_gradient_checkpointing:
             logger.info("Using gradient checkpointing for DiT blocks. This will save memory but use more computation.")
+
+    def _apply(self, fn):
+        result = super()._apply(fn)
+        device = next(self.parameters()).device
+        self.freqs = tuple(freqs.to(device=device) for freqs in self.freqs)
+        return result
+
+    def get_freqs(self, f: int, h: int, w: int) -> torch.Tensor:
+        freq_f, freq_h, freq_w = self.freqs
+        return torch.cat(
+            [
+                freq_f[:f].view(f, 1, 1, -1).expand(f, h, w, -1),
+                freq_h[:h].view(1, h, 1, -1).expand(f, h, w, -1),
+                freq_w[:w].view(1, 1, w, -1).expand(f, h, w, -1),
+            ],
+            dim=-1,
+        ).reshape(f * h * w, 1, -1)
             
 
     def patchify(self, x: torch.Tensor, control_camera_latents_input: Optional[torch.Tensor] = None):
@@ -599,11 +615,7 @@ class WanVideoDiT(torch.nn.Module):
 
         x_tokens = rearrange(x, "b c f h w -> b (f h w) c").contiguous()
 
-        freqs = torch.cat([
-            self.freqs[0][:f].view(f, 1, 1, -1).expand(f, h, w, -1),
-            self.freqs[1][:h].view(1, h, 1, -1).expand(f, h, w, -1),
-            self.freqs[2][:w].view(1, 1, w, -1).expand(f, h, w, -1)
-        ], dim=-1).reshape(f * h * w, 1, -1).to(x_tokens.device)
+        freqs = self.get_freqs(f, h, w)
 
         return {
             "tokens": x_tokens,
@@ -625,6 +637,99 @@ class WanVideoDiT(torch.nn.Module):
         x = self.unpatchify(x, (f, h, w))
         return x
 
+    def prepare(
+        self,
+        x: torch.Tensor,
+        timestep: torch.Tensor,
+        context: torch.Tensor,
+        context_mask: torch.Tensor,
+        action: Optional[torch.Tensor] = None,
+        fuse_vae_embedding_in_latents: bool = False,
+        control_camera_latents_input: Optional[torch.Tensor] = None,
+    ) -> tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        int,
+        int,
+        int,
+        int,
+    ]:
+        """Prepare tensor inputs for the compile-friendly DiT/MoT core."""
+        batch_size = x.shape[0]
+        patch_h = int(self.patch_size[1])
+        patch_w = int(self.patch_size[2])
+        tokens_per_frame = (x.shape[3] // patch_h) * (x.shape[4] // patch_w)
+
+        if not self.seperated_timestep or not fuse_vae_embedding_in_latents:
+            raise NotImplementedError(
+                "Only support seperated_timestep with fuse_vae_embedding_in_latents for now."
+            )
+        token_timesteps = torch.ones(
+            (batch_size, x.shape[2], tokens_per_frame),
+            dtype=timestep.dtype,
+            device=timestep.device,
+        ) * timestep.view(batch_size, 1, 1)
+        token_timesteps[:, 0, :] = 0
+        token_timesteps = token_timesteps.reshape(batch_size, -1)
+        token_t_emb = sinusoidal_embedding_1d(self.freq_dim, token_timesteps.reshape(-1))
+        t = self.time_embedding(token_t_emb).reshape(batch_size, -1, self.hidden_dim)
+        t_mod = self.time_projection(t).unflatten(2, (6, self.hidden_dim))
+
+        x = self.patchify(x, control_camera_latents_input=control_camera_latents_input)
+        f, h, w = x.shape[2:]
+        context = self.text_embedding(context)
+        context_len = context.shape[1]
+        if self.action_conditioned and action is not None:
+            action_len = action.shape[1]
+            action_emb = self.action_embedding(action)
+            action_pos_embed = sinusoidal_embedding_1d(
+                self.hidden_dim,
+                torch.arange(action_len, device=action_emb.device),
+            )
+            action_emb = action_emb + action_pos_embed.unsqueeze(0)
+            context = torch.cat([context, action_emb], dim=1)
+            num_temporal_groups = f - 1
+            action_group_mask = create_group_causal_attn_mask(
+                num_temporal_groups=num_temporal_groups,
+                num_query_per_group=tokens_per_frame,
+                num_key_per_group=action_len // num_temporal_groups,
+                mode=self.action_group_causal_mask_mode,
+            ).to(context.device)
+            seq_len = f * h * w
+            final_context_mask = torch.zeros(
+                (batch_size, seq_len, context.shape[1]),
+                dtype=torch.bool,
+                device=context.device,
+            )
+            final_context_mask[:, :, :context_len] = context_mask.unsqueeze(1).expand(
+                -1, seq_len, -1
+            )
+            final_context_mask[:, tokens_per_frame:, context_len:] = action_group_mask.unsqueeze(
+                0
+            ).expand(batch_size, -1, -1)
+            context_mask = final_context_mask
+        else:
+            context_mask = context_mask.unsqueeze(1).expand(-1, f * h * w, -1)
+
+        x_tokens = rearrange(x, "b c f h w -> b (f h w) c").contiguous()
+        freqs = self.get_freqs(f, h, w)
+        return x_tokens, t, t_mod, context, context_mask, freqs, f, h, w, tokens_per_frame
+
+    def post(
+        self,
+        x_tokens: torch.Tensor,
+        t: torch.Tensor,
+        f: int,
+        h: int,
+        w: int,
+    ) -> torch.Tensor:
+        """Convert tensor-core video tokens back into latent predictions."""
+        return self.unpatchify(self.head(x_tokens, t), (f, h, w))
+
     def forward(
         self,
         x: torch.Tensor,
@@ -634,7 +739,13 @@ class WanVideoDiT(torch.nn.Module):
         action: Optional[torch.Tensor] = None,
         fuse_vae_embedding_in_latents: bool = False,
     ):
-        pre_state = self.pre_dit(
+        if context_mask is None:
+            context_mask = torch.ones(
+                (x.shape[0], context.shape[1]),
+                dtype=torch.bool,
+                device=context.device,
+            )
+        x_tokens, t, t_mod, context_emb, context_attn_mask, freqs, f, h, w, tokens_per_frame = self.prepare(
             x=x,
             timestep=timestep,
             context=context,
@@ -642,25 +753,20 @@ class WanVideoDiT(torch.nn.Module):
             action=action,
             fuse_vae_embedding_in_latents=fuse_vae_embedding_in_latents,
         )
-        x_tokens = pre_state["tokens"]
-        context_emb = pre_state["context"]
-        t_mod = pre_state["t_mod"]
-        freqs = pre_state["freqs"]
-        context_attn_mask = pre_state["context_mask"]
         self_attn_mask = self.build_video_to_video_mask(
             video_seq_len=x_tokens.shape[1],
-            video_tokens_per_frame=int(pre_state["meta"]["tokens_per_frame"]),
+            video_tokens_per_frame=tokens_per_frame,
             device=x_tokens.device,
         ) if self.video_attention_mask_mode != "bidirectional" else None # special rule for faster speed
 
         for block in self.blocks:
-            if self.use_gradient_checkpointing:
-                x_tokens = gradient_checkpoint_forward(
-                    block,
-                    self.use_gradient_checkpointing,
-                    x_tokens, context_emb, t_mod, freqs, context_mask=context_attn_mask, self_attn_mask=self_attn_mask
-                )
-            else:
-                x_tokens = block(x_tokens, context_emb, t_mod, freqs, context_mask=context_attn_mask, self_attn_mask=self_attn_mask)
+            x_tokens = block(
+                x_tokens,
+                context_emb,
+                t_mod,
+                freqs,
+                context_mask=context_attn_mask,
+                self_attn_mask=self_attn_mask,
+            )
 
-        return self.post_dit(x_tokens, pre_state)
+        return self.post(x_tokens, t, f, h, w)

@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional
 
 from fastwam.utils.logging_config import get_logger
 
-from .helpers.gradient import gradient_checkpoint_forward
 from .wan_video_dit import (
     DiTBlock,
     sinusoidal_embedding_1d,
@@ -99,6 +98,15 @@ class ActionDiT(nn.Module):
         self.freqs = precompute_freqs_cis(attn_head_dim, end=1024)
 
         self.use_gradient_checkpointing = use_gradient_checkpointing
+
+    def _apply(self, fn):
+        result = super()._apply(fn)
+        device = next(self.parameters()).device
+        self.freqs = self.freqs.to(device=device)
+        return result
+
+    def get_freqs(self, seq_len: int) -> torch.Tensor:
+        return self.freqs[:seq_len].view(seq_len, 1, -1)
 
     @classmethod
     def backbone_key_set(cls, keys) -> set[str]:
@@ -283,7 +291,7 @@ class ActionDiT(nn.Module):
         tokens = self.action_encoder(action_tokens)
         context_emb = self.text_embedding(context)
         context_attn_mask = context_mask.unsqueeze(1).expand(-1, seq_len, -1)
-        freqs = self.freqs[:seq_len].view(seq_len, 1, -1).to(tokens.device)
+        freqs = self.get_freqs(seq_len)
 
         return {
             "tokens": tokens,
@@ -301,6 +309,27 @@ class ActionDiT(nn.Module):
     def post_dit(self, tokens: torch.Tensor, pre_state: Dict[str, Any]) -> torch.Tensor:
         return self.head(tokens)
 
+    def prepare(
+        self,
+        action_tokens: torch.Tensor,
+        timestep: torch.Tensor,
+        context: torch.Tensor,
+        context_mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Prepare tensor inputs for the compile-friendly DiT/MoT core."""
+        seq_len = action_tokens.shape[1]
+        t = self.time_embedding(sinusoidal_embedding_1d(self.freq_dim, timestep))
+        t_mod = self.time_projection(t).unflatten(1, (6, self.hidden_dim))
+        tokens = self.action_encoder(action_tokens)
+        context_emb = self.text_embedding(context)
+        context_attn_mask = context_mask.unsqueeze(1).expand(-1, seq_len, -1)
+        freqs = self.get_freqs(seq_len)
+        return tokens, t, t_mod, context_emb, context_attn_mask, freqs
+
+    def post(self, tokens: torch.Tensor) -> torch.Tensor:
+        """Project action tokens produced by the tensor core."""
+        return self.head(tokens)
+
     def forward(
         self,
         action_tokens: torch.Tensor,
@@ -308,30 +337,26 @@ class ActionDiT(nn.Module):
         context: torch.Tensor,
         context_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        pre_state = self.pre_dit(
+        if context_mask is None:
+            context_mask = torch.ones(
+                (action_tokens.shape[0], context.shape[1]),
+                dtype=torch.bool,
+                device=context.device,
+            )
+        x, _t, t_mod, context_emb, context_attn_mask, freqs = self.prepare(
             action_tokens=action_tokens,
             timestep=timestep,
             context=context,
             context_mask=context_mask,
         )
-        x = pre_state["tokens"]
-        context = pre_state["context"]
-        t_mod = pre_state["t_mod"]
-        freqs = pre_state["freqs"]
-        context_mask = pre_state["context_mask"]
 
         for block in self.blocks:
-            if self.use_gradient_checkpointing:
-                x = gradient_checkpoint_forward(
-                    block,
-                    self.use_gradient_checkpointing,
-                    x,
-                    context,
-                    t_mod,
-                    freqs,
-                    context_mask=context_mask,
-                )
-            else:
-                x = block(x, context, t_mod, freqs, context_mask=context_mask)
+            x = block(
+                x,
+                context_emb,
+                t_mod,
+                freqs,
+                context_mask=context_attn_mask,
+            )
 
-        return self.post_dit(x, pre_state)
+        return self.post(x)

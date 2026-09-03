@@ -15,6 +15,10 @@ logger = get_logger(__name__)
 MAX_GETITEM_ATTEMPT = 5
 
 class BaseLerobotDataset(torch.utils.data.Dataset):
+    metadata_cls = LeRobotDatasetMetadata
+    multi_dataset_cls = MultiLeRobotDataset
+    presample_images = False
+
     def __init__(
         self,
         dataset_dirs: List[str],
@@ -33,6 +37,9 @@ class BaseLerobotDataset(torch.utils.data.Dataset):
 
         # sampling
         global_sample_stride: int = 1,
+        image_subsample_stride: int = 1,
+        tolerance_s: Optional[float] = None,
+        video_backend: Optional[str] = None,
     ):
         assert len(dataset_dirs) > 0, "At least one dataset directory is required"
         assert past_action_size == 0
@@ -44,12 +51,13 @@ class BaseLerobotDataset(torch.utils.data.Dataset):
         self.action_size = action_size
         self.past_action_size = past_action_size
         self.obs_size = obs_size
+        self.image_subsample_stride = image_subsample_stride
         self.processor = None  # Will be set externally
         metas = []
         for ds_dir in dataset_dirs:
             ds_root = Path(ds_dir)
             repo_id = ds_dir
-            meta = LeRobotDatasetMetadata(repo_id=repo_id, root=ds_root)
+            meta = self.metadata_cls(repo_id=repo_id, root=ds_root)
             metas.append(meta)
 
         fps_list = [m.fps for m in metas]
@@ -69,8 +77,10 @@ class BaseLerobotDataset(torch.utils.data.Dataset):
         for meta in self.image_meta:
             key = meta["key"]
             meta["lerobot_key"] = f"observation.images.{key}" if key != "default" else "observation.images"
+            image_stride = self.image_subsample_stride if self.presample_images else 1
             delta_timestamps[meta["lerobot_key"]] = [
-                (t * global_sample_stride) / fps for t in range(-past_obs_size, -past_obs_size + obs_size)
+                (t * global_sample_stride) / fps
+                for t in range(-past_obs_size, -past_obs_size + obs_size, image_stride)
             ]
         
         for meta in self.state_meta:
@@ -101,10 +111,13 @@ class BaseLerobotDataset(torch.utils.data.Dataset):
                 else:
                     episodes.update({meta.repo_id: [episode_indices[i] for i in range(split_idx, meta.total_episodes)]})
 
-        self.multi_dataset = MultiLeRobotDataset(
+        tolerances_s = None if tolerance_s is None else dict.fromkeys(self.dataset_dirs, tolerance_s)
+        self.multi_dataset = self.multi_dataset_cls(
             dataset_dirs=self.dataset_dirs,
             episodes=episodes,
             delta_timestamps=delta_timestamps,
+            tolerances_s=tolerances_s,
+            video_backend=video_backend,
         )
         
         # HACK: lerobot 3.0 will fix this

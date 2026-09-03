@@ -15,7 +15,7 @@ class MoT(nn.Module):
     def __init__(
         self,
         mixtures: Dict[str, nn.Module],
-        mot_checkpoint_mixed_attn: bool = True,
+        mot_checkpoint_mixed_attn: bool = False,
     ):
         super().__init__()
         if not mixtures:
@@ -25,9 +25,10 @@ class MoT(nn.Module):
 
         self.mixtures = nn.ModuleDict(mixtures)
         self.expert_order = list(self.mixtures.keys())
-        self.mot_checkpoint_mixed_attn = mot_checkpoint_mixed_attn
         if mot_checkpoint_mixed_attn:
-            logger.info("Using gradient checkpointing for mixture attention. This will save memory but use more computation.")
+            raise ValueError("Wan MoT gradient checkpointing is not supported by the compiled tensor core.")
+        self.mot_checkpoint_mixed_attn = False
+        self.compile_training_layers = False
 
         first_expert = self.mixtures[self.expert_order[0]]
         self.num_layers = len(first_expert.blocks)
@@ -49,6 +50,16 @@ class MoT(nn.Module):
                     "All experts must have same attn_head_dim; "
                     f"got {self.attn_head_dim} and {expert.attn_head_dim}"
                 )
+        checkpointed_experts = [
+            name
+            for name in self.expert_order
+            if bool(getattr(self.mixtures[name], "use_gradient_checkpointing", False))
+        ]
+        if checkpointed_experts:
+            raise ValueError(
+                "Wan expert gradient checkpointing is not supported by the compiled tensor core: "
+                f"{checkpointed_experts}."
+            )
         
         logger.info(f"Initialized MoT with experts: {self.expert_order}, num_layers={self.num_layers}")
         for name in self.expert_order:
@@ -83,18 +94,13 @@ class MoT(nn.Module):
     ) -> torch.Tensor:
         attn_mask = attention_mask.to(device=q_cat.device)
 
-        def _forward(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-            return flash_attention(q=q, k=k, v=v, num_heads=self.num_heads, ctx_mask=attn_mask)
-
-        if self.mot_checkpoint_mixed_attn and self.training:
-            return torch.utils.checkpoint.checkpoint(
-                _forward,
-                q_cat,
-                k_cat,
-                v_cat,
-                use_reentrant=False,
-            )
-        return _forward(q_cat, k_cat, v_cat)
+        return flash_attention(
+            q=q_cat,
+            k=k_cat,
+            v=v_cat,
+            num_heads=self.num_heads,
+            ctx_mask=attn_mask,
+        )
 
     @staticmethod
     def _apply_expert_post_block(
@@ -120,6 +126,27 @@ class MoT(nn.Module):
         mlp_input = modulate(block.norm2(x), shift_mlp, scale_mlp)
         x = block.gate(x, gate_mlp, block.ffn(mlp_input))
         return x
+
+    @staticmethod
+    def _apply_expert_post_block_tensor(
+        block,
+        residual_x: torch.Tensor,
+        mixed_attn_out: torch.Tensor,
+        gate_msa: torch.Tensor,
+        shift_mlp: torch.Tensor,
+        scale_mlp: torch.Tensor,
+        gate_mlp: torch.Tensor,
+        context: torch.Tensor,
+        context_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        x = block.gate(residual_x, gate_msa, block.self_attn.o(mixed_attn_out))
+        x = x + block.cross_attn(
+            block.norm3(x),
+            context,
+            ctx_mask=context_mask.unsqueeze(1),
+        )
+        mlp_input = modulate(block.norm2(x), shift_mlp, scale_mlp)
+        return block.gate(x, gate_mlp, block.ffn(mlp_input))
 
     def _build_expert_attention_io(
         self,
@@ -443,6 +470,242 @@ class MoT(nn.Module):
                 context_payload=action_context_payload,
             )
         return x
+
+    def prefill_video_cache_tensor(
+        self,
+        video_tokens: torch.Tensor,
+        video_freqs: torch.Tensor,
+        video_t_mod: torch.Tensor,
+        video_context: torch.Tensor,
+        video_context_mask: torch.Tensor,
+        video_attention_mask: torch.Tensor,
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+        expert = self.mixtures["video"]
+        x = video_tokens
+        cache_k_list: list[torch.Tensor] = []
+        cache_v_list: list[torch.Tensor] = []
+        for layer_idx in range(self.num_layers):
+            block = expert.blocks[layer_idx]
+            (
+                q,
+                k,
+                v,
+                residual_x,
+                gate_msa,
+                shift_mlp,
+                scale_mlp,
+                gate_mlp,
+                _use_gradient_checkpointing,
+            ) = self._build_expert_attention_io(
+                expert=expert,
+                block=block,
+                x=x,
+                freqs=video_freqs,
+                t_mod=video_t_mod,
+            )
+            mixed = flash_attention(
+                q=q,
+                k=k,
+                v=v,
+                num_heads=self.num_heads,
+                ctx_mask=video_attention_mask.to(device=q.device),
+            )
+            x = self._apply_expert_post_block_tensor(
+                block=block,
+                residual_x=residual_x,
+                mixed_attn_out=mixed,
+                gate_msa=gate_msa,
+                shift_mlp=shift_mlp,
+                scale_mlp=scale_mlp,
+                gate_mlp=gate_mlp,
+                context=video_context,
+                context_mask=video_context_mask,
+            )
+            cache_k_list.append(k)
+            cache_v_list.append(v)
+        return cache_k_list, cache_v_list
+
+    def forward_action_with_video_cache_tensor(
+        self,
+        action_tokens: torch.Tensor,
+        action_freqs: torch.Tensor,
+        action_t_mod: torch.Tensor,
+        action_context: torch.Tensor,
+        action_context_mask: torch.Tensor,
+        video_cache_k: list[torch.Tensor],
+        video_cache_v: list[torch.Tensor],
+        action_attention_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        expert = self.mixtures["action"]
+        x = action_tokens
+        for layer_idx in range(self.num_layers):
+            block = expert.blocks[layer_idx]
+            (
+                q_action,
+                k_action,
+                v_action,
+                residual_x,
+                gate_msa,
+                shift_mlp,
+                scale_mlp,
+                gate_mlp,
+                _use_gradient_checkpointing,
+            ) = self._build_expert_attention_io(
+                expert=expert,
+                block=block,
+                x=x,
+                freqs=action_freqs,
+                t_mod=action_t_mod,
+            )
+            mixed = flash_attention(
+                q=q_action,
+                k=torch.cat([video_cache_k[layer_idx], k_action], dim=1),
+                v=torch.cat([video_cache_v[layer_idx], v_action], dim=1),
+                num_heads=self.num_heads,
+                ctx_mask=action_attention_mask.to(device=q_action.device),
+            )
+            x = self._apply_expert_post_block_tensor(
+                block=block,
+                residual_x=residual_x,
+                mixed_attn_out=mixed,
+                gate_msa=gate_msa,
+                shift_mlp=shift_mlp,
+                scale_mlp=scale_mlp,
+                gate_mlp=gate_mlp,
+                context=action_context,
+                context_mask=action_context_mask,
+            )
+        return x
+
+    def _forward_joint_layer(
+        self,
+        video_block: nn.Module,
+        action_block: nn.Module,
+        video_tokens: torch.Tensor,
+        action_tokens: torch.Tensor,
+        video_freqs: torch.Tensor,
+        action_freqs: torch.Tensor,
+        video_t_mod: torch.Tensor,
+        action_t_mod: torch.Tensor,
+        video_context: torch.Tensor,
+        video_context_mask: torch.Tensor,
+        action_context: torch.Tensor,
+        action_context_mask: torch.Tensor,
+        attention_mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        video_expert = self.mixtures["video"]
+        action_expert = self.mixtures["action"]
+        (
+            q_video,
+            k_video,
+            v_video,
+            residual_video,
+            gate_msa_video,
+            shift_mlp_video,
+            scale_mlp_video,
+            gate_mlp_video,
+            _video_checkpointing,
+        ) = self._build_expert_attention_io(
+            expert=video_expert,
+            block=video_block,
+            x=video_tokens,
+            freqs=video_freqs,
+            t_mod=video_t_mod,
+        )
+        (
+            q_action,
+            k_action,
+            v_action,
+            residual_action,
+            gate_msa_action,
+            shift_mlp_action,
+            scale_mlp_action,
+            gate_mlp_action,
+            _action_checkpointing,
+        ) = self._build_expert_attention_io(
+            expert=action_expert,
+            block=action_block,
+            x=action_tokens,
+            freqs=action_freqs,
+            t_mod=action_t_mod,
+        )
+        mixed = flash_attention(
+            q=torch.cat([q_video, q_action], dim=1),
+            k=torch.cat([k_video, k_action], dim=1),
+            v=torch.cat([v_video, v_action], dim=1),
+            num_heads=self.num_heads,
+            ctx_mask=attention_mask.to(device=q_video.device),
+        )
+        video_seq_len = video_tokens.shape[1]
+        return (
+            self._apply_expert_post_block_tensor(
+                block=video_block,
+                residual_x=residual_video,
+                mixed_attn_out=mixed[:, :video_seq_len],
+                gate_msa=gate_msa_video,
+                shift_mlp=shift_mlp_video,
+                scale_mlp=scale_mlp_video,
+                gate_mlp=gate_mlp_video,
+                context=video_context,
+                context_mask=video_context_mask,
+            ),
+            self._apply_expert_post_block_tensor(
+                block=action_block,
+                residual_x=residual_action,
+                mixed_attn_out=mixed[:, video_seq_len:],
+                gate_msa=gate_msa_action,
+                shift_mlp=shift_mlp_action,
+                scale_mlp=scale_mlp_action,
+                gate_mlp=gate_mlp_action,
+                context=action_context,
+                context_mask=action_context_mask,
+            ),
+        )
+
+    def forward_joint_core(
+        self,
+        video_tokens: torch.Tensor,
+        action_tokens: torch.Tensor,
+        video_freqs: torch.Tensor,
+        action_freqs: torch.Tensor,
+        video_t_mod: torch.Tensor,
+        action_t_mod: torch.Tensor,
+        video_context: torch.Tensor,
+        video_context_mask: torch.Tensor,
+        action_context: torch.Tensor,
+        action_context_mask: torch.Tensor,
+        attention_mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.training and self.compile_training_layers and not hasattr(self, "_compiled_joint_layer"):
+            self._compiled_joint_layer = torch.compile(
+                self._forward_joint_layer,
+                fullgraph=True,
+            )
+
+        x_video = video_tokens
+        x_action = action_tokens
+        for layer_idx in range(self.num_layers):
+            layer = (
+                self._compiled_joint_layer
+                if self.training and self.compile_training_layers
+                else self._forward_joint_layer
+            )
+            x_video, x_action = layer(
+                video_block=self.mixtures["video"].blocks[layer_idx],
+                action_block=self.mixtures["action"].blocks[layer_idx],
+                video_tokens=x_video,
+                action_tokens=x_action,
+                video_freqs=video_freqs,
+                action_freqs=action_freqs,
+                video_t_mod=video_t_mod,
+                action_t_mod=action_t_mod,
+                video_context=video_context,
+                video_context_mask=video_context_mask,
+                action_context=action_context,
+                action_context_mask=action_context_mask,
+                attention_mask=attention_mask,
+            )
+        return x_video, x_action
 
     def forward(
         self,

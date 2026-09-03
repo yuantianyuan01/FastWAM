@@ -40,9 +40,11 @@ class FastWAMProcessor(BaseProcessor):
 
         tokenizer: Optional[Any] = None,
         delta_action_dim_mask: Optional[Dict[str, List[bool]]] = None,
+        num_image_steps: Optional[int] = None,
     ):
         self.shape_meta = shape_meta
         self.num_obs_steps = num_obs_steps
+        self.num_image_steps = num_obs_steps if num_image_steps is None else num_image_steps
         self.num_output_cameras = num_output_cameras
         self.action_output_dim = action_output_dim
         self.proprio_output_dim = proprio_output_dim
@@ -224,7 +226,7 @@ class FastWAMProcessor(BaseProcessor):
             for trans in current_transforms:
                 image = trans(image)
             
-            meta_shape = [self.num_obs_steps] + shape
+            meta_shape = [self.num_image_steps] + shape
             assert image.shape == meta_shape, \
                 f"Expected shape {meta_shape}, got {image.shape} after transforms for key {key}"
 

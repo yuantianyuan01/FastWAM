@@ -117,6 +117,29 @@ class Wan22Trainer:
         ensure_dir(self.state_dir)
         ensure_dir(self.eval_dir)
 
+        if bool(getattr(self.model, "compile_training_denoise", False)):
+            logger.info("Compiling training denoise forward/backward before DeepSpeed initialization.")
+            compile_start = time.perf_counter()
+            warmup_loader = DataLoader(
+                self.train_dataset,
+                batch_size=self.batch_size,
+                shuffle=False,
+                sampler=self.train_sampler,
+                num_workers=0,
+            )
+            warmup_sample = next(iter(warmup_loader))
+            with self.accelerator.autocast():
+                warmup_loss, _ = self.model.training_loss(warmup_sample)
+            warmup_loss.backward()
+            self.optimizer.zero_grad(set_to_none=True)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize(self.accelerator.device)
+            logger.info(
+                "Finished training denoise compile warmup in %.2f seconds.",
+                time.perf_counter() - compile_start,
+            )
+            set_global_seed(self.seed)
+
         self.model, self.optimizer, self.train_loader, self.scheduler = self.accelerator.prepare(
             self.model, self.optimizer, self.train_loader, self.scheduler
         )

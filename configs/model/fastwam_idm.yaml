@@ -5,7 +5,9 @@ tokenizer_max_len: 128
 load_text_encoder: false
 proprio_dim: ${data.train.processor.proprio_output_dim}
 redirect_common_files: true
-mot_checkpoint_mixed_attn: true
+mot_checkpoint_mixed_attn: false
+compile_training_denoise: false
+video_cond_noise_prob: 0.5
 action_dit_pretrained_path: checkpoints/ActionDiT_linear_interp_Wan22_alphascale_1024hdim.pt
 skip_dit_load_from_pretrain: false
 
@@ -50,8 +52,8 @@ video_scheduler:
   num_train_timesteps: 1000
 
 action_scheduler:
-  train_shift: 5.0
-  infer_shift: 5.0
+  train_shift: 1.0
+  infer_shift: 1.0
   num_train_timesteps: 1000
 
 loss:

@@ -111,14 +111,9 @@ class Wan22Core(torch.nn.Module):
         return prompt_emb.to(device=self.device), mask
 
     def _encode_video_latents(self, video_tensor, tiled=False, tile_size=(30, 52), tile_stride=(15, 26)):
-        z = self.vae.encode(
-            video_tensor,
-            device=self.device,
-            tiled=tiled,
-            tile_size=tile_size,
-            tile_stride=tile_stride,
-        )
-        return z
+        if tiled:
+            raise NotImplementedError("Batched VAE encoding does not support tiled encoding.")
+        return self.vae.model.encode(video_tensor.to(self.device), self.vae.scale)
 
     def _encode_input_image_latents_tensor(self, input_image: torch.Tensor, tiled=False, tile_size=(30, 52), tile_stride=(15, 26)):
         if input_image.ndim == 3:
@@ -127,11 +122,10 @@ class Wan22Core(torch.nn.Module):
             raise ValueError(
                 f"`input_image` must have shape [1,3,H,W] or [3,H,W], got {tuple(input_image.shape)}"
             )
+        if tiled:
+            raise NotImplementedError("Batched VAE image encoding does not support tiled encoding.")
         image = input_image.to(device=self.device)[0].unsqueeze(1)
-        z = self.vae.encode([image], device=self.device, tiled=tiled, tile_size=tile_size, tile_stride=tile_stride)
-        if isinstance(z, list):
-            z = z[0].unsqueeze(0)
-        return z
+        return self.vae.model.encode(image.unsqueeze(0), self.vae.scale)
 
     def _decode_latents(self, latents, tiled=False, tile_size=(30, 52), tile_stride=(15, 26)):
         video_tensor = self.vae.decode(latents, device=self.device, tiled=tiled, tile_size=tile_size, tile_stride=tile_stride)

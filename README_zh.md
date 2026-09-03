@@ -13,6 +13,113 @@
 
 本仓库包含 FastWAM 在 LIBERO / RoboTwin 上的训练与评估代码。
 
+## What's New
+
+FastWAM 现在更快、更适合大规模数据，也为研究提供了更灵活的模型选择。本次更新带来了显著的
+训练与推理加速、原生 LeRobot v3.0 支持，以及一个可以自由切换是否进行未来想象的新模型。
+
+### ⚡ 推理加速约 2 倍
+
+FastWAM 端到端推理速度提升约 **2 倍**，测速包含 text encoding 和 VAE encoding：
+
+- **NVIDIA H20：** 470 ms → 210 ms
+- **NVIDIA RTX 4090：** 190 ms → 110 ms
+
+LIBERO 默认通过 `EVALUATION.compile_action_infer=true` 启用加速路径。感谢
+[PR #43](https://github.com/yuantianyuan01/FastWAM/pull/43) 提出的优化思路，
+为本次推理加速工作提供了重要启发。原有checkpoint可以直接使用。
+
+### 🚀 训练加速约 10%
+
+在 NVIDIA H20 GPU 上，FastWAM 训练速度提升约 **10%**。新的训练路径结合了
+compiled denoising core、batch VAE encoding 和轻量 CUDA Graph backend。
+通过以下配置开启 denoise compilation：
+
+```bash
+bash scripts/train_zero1.sh 8 task=libero_uncond_2cam224_1e-4 \
+  model.compile_training_denoise=true
+```
+
+同时支持缓存 text embedding 和在线 T5 encoding 两种训练方式。后者省略了text cache预处理，更方便，但会慢约10%。
+
+### 📦 原生支持 LeRobot 2.1 和 3.0
+
+FastWAM 现在同时支持 **LeRobot 2.1 和 LeRobot 3.0** 数据集。LeRobot 3.0
+使用 chunked parquet 和 video layout，在数据规模增大时具有更快的数据加载和
+dataset statistics 计算速度，更适合大规模机器人数据训练。
+
+从 [Hugging Face](https://huggingface.co/datasets/yuanty/LIBERO-fastwam)
+下载已发布的 LeRobot 3.0 LIBERO 数据，并选择 v3.0 data config：
+
+```bash
+huggingface-cli download yuanty/LIBERO-fastwam \
+  --repo-type dataset \
+  --include "lerobot_v30/**" \
+  --local-dir ./data
+
+python scripts/train.py task=libero_uncond_2cam224_1e-4 \
+  data=libero_2cam_lerobot_v30
+```
+
+使用其他 LeRobot 3.0 数据集时，可以复制
+`configs/data/libero_2cam_lerobot_v30.yaml`，修改其中的
+`train.dataset_dirs`，再通过 `data=<config_name>` 选择新配置。原有 LeRobot
+2.1 配置无需修改，可以继续使用。
+
+### 🧠 Optional IDM：一个模型，两种 thinking mode
+
+Optional IDM 是一个新的 FastWAM variant，在**同一个模型中支持两种推理模式**：
+
+- **IDM mode：** 先想象未来视频，再预测动作。
+- **First-frame mode (Fast-WAM)：** 省略 test-time future imagination，直接根据当前观测预测动作。
+
+从 [Hugging Face](https://huggingface.co/yuanty/fastwam) 下载已发布的 Optional IDM 权重：
+
+```bash
+huggingface-cli download yuanty/fastwam \
+  libero_optional_idm_2cam224.pt \
+  libero_optional_idm_2cam224_dataset_stats.json \
+  --local-dir ./checkpoints/fastwam_release
+```
+
+只需要训练一次 optional-IDM：
+
+```bash
+bash scripts/train_zero1.sh 8 task=libero_optional_idm_2cam224_1e-4
+```
+
+之后即可在评测时选择任一模式，无需重新训练，方便研究和比较 future
+imagination 在什么情况下有效：
+
+```bash
+python experiments/libero/run_libero_manager.py \
+  task=libero_optional_idm_2cam224_1e-4 \
+  ckpt=./checkpoints/fastwam_release/libero_optional_idm_2cam224.pt \
+  EVALUATION.dataset_stats_path=./checkpoints/fastwam_release/libero_optional_idm_2cam224_dataset_stats.json \
+  EVALUATION.sigma_shift=1.0 \
+  +EVALUATION.action_infer_mode=idm \
+  MULTIRUN.num_gpus=8
+```
+
+将 `idm` 替换为 `first_frame` 即可使用 Fast-WAM inference mode。
+
+使用 action scheduler shift `1.0` 训练的 release 权重在完整 LIBERO benchmark
+（40 个 tasks，每个 task 50 个 episodes）上的成功率如下：
+
+| 推理模式 | Spatial | Goal | Object | Long | Average |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| IDM | 99.0% | 98.6% | 99.6% | 97.0% | **98.55%** |
+| First-frame | 98.2% | 97.8% | 99.2% | 95.8% | **97.75%** |
+
+### 其他改进
+
+- 训练和评测的 action scheduler shift 默认统一为 `1.0`，实验发现 `1.0~3.0`
+  效果接近。评测原论文发布的旧 checkpoint 时，请显式设置
+  `EVALUATION.sigma_shift=5.0`，以复现原始设置。
+- LIBERO 评测升级为持久模型进程，并支持动态任务调度、坏卡隔离、失败恢复和断点续测。
+- 优化 IDM 和 Optional IDM 的纯 action 推理：`infer_action` 直接返回 action 和 video latent，
+  仅 `infer_joint` 在需要输出视频时执行 VAE decode，避免 action-only 部署中的冗余计算。
+
 ## 目录
 
 - [File Structure](#file-structure)
@@ -158,6 +265,8 @@ pip install -U huggingface_hub
 huggingface-cli download yuanty/fastwam \
   libero_uncond_2cam224.pt \
   libero_uncond_2cam224_dataset_stats.json \
+  libero_optional_idm_2cam224.pt \
+  libero_optional_idm_2cam224_dataset_stats.json \
   robotwin_uncond_3cam_384.pt \
   robotwin_uncond_3cam_384_dataset_stats.json \
   --local-dir ./checkpoints/fastwam_release
@@ -169,6 +278,8 @@ huggingface-cli download yuanty/fastwam \
 checkpoints/fastwam_release/
 ├── libero_uncond_2cam224.pt
 ├── libero_uncond_2cam224_dataset_stats.json
+├── libero_optional_idm_2cam224.pt
+├── libero_optional_idm_2cam224_dataset_stats.json
 ├── robotwin_uncond_3cam_384.pt
 └── robotwin_uncond_3cam_384_dataset_stats.json
 ```
@@ -203,6 +314,7 @@ python experiments/libero/run_libero_manager.py \
   task=libero_uncond_2cam224_1e-4 \
   ckpt=./checkpoints/fastwam_release/libero_uncond_2cam224.pt \
   EVALUATION.dataset_stats_path=./checkpoints/fastwam_release/libero_uncond_2cam224_dataset_stats.json \
+  EVALUATION.sigma_shift=5.0 \
   MULTIRUN.num_gpus=8
 ```
 
@@ -213,6 +325,7 @@ python experiments/robotwin/run_robotwin_manager.py \
   task=robotwin_uncond_3cam_384_1e-4 \
   ckpt=./checkpoints/fastwam_release/robotwin_uncond_3cam_384.pt \
   EVALUATION.dataset_stats_path=./checkpoints/fastwam_release/robotwin_uncond_3cam_384_dataset_stats.json \
+  EVALUATION.sigma_shift=5.0 \
   MULTIRUN.num_gpus=8
 ```
 

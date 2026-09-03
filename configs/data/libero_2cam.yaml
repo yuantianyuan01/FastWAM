@@ -64,4 +64,5 @@ train:
       - _target_: torchvision.transforms.Resize
         size: [224, 224]
   text_embedding_cache_dir: ./data/text_embeds_cache/libero
+  use_text_embed_cache: true
   context_len: 128

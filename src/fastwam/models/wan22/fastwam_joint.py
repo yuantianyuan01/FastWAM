@@ -67,7 +67,9 @@ class FastWAMJoint(FastWAM):
         rand_device: str = "cpu",
         tiled: bool = False,
         test_action_with_infer_action: bool = True,
+        compile_action_infer: bool = False,
     ) -> dict[str, Any]:
+        del compile_action_infer
         if test_action_with_infer_action:
             logger.warning(
                 "`FastWAMJoint.infer_joint` ignores `test_action_with_infer_action=True` "
@@ -109,7 +111,9 @@ class FastWAMJoint(FastWAM):
         seed: Optional[int] = None,
         rand_device: str = "cpu",
         tiled: bool = False,
+        compile_action_infer: bool = False,
     ) -> dict[str, Any]:
+        del compile_action_infer
         self.eval()
 
         if input_image.ndim == 3:
