@@ -15,7 +15,45 @@ This repository contains the training and evaluation code for FastWAM on LIBERO 
 
 ## Intel XPU Support
 
-FastWAM inference has been validated on Intel XPU (Intel GPUs) and runs **without any code changes** to this repository. Install a PyTorch build with Intel XPU support and select the `xpu` device at runtime.
+FastWAM inference has been validated on Intel GPUs through PyTorch XPU. The
+repository does not require code or configuration changes for XPU inference;
+select the runtime device when invoking a preprocessing or evaluation command.
+
+### Install a PyTorch XPU build
+
+The default installation below uses CUDA wheels. For an Intel GPU, install the
+XPU wheels instead:
+
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+pip install -e .
+```
+
+Do not install CUDA-only acceleration packages for an XPU environment unless
+another dependency explicitly requires them. FastWAM uses PyTorch operators on
+XPU, so an existing CUDA `flash-attn` installation is not needed for inference.
+
+### Select the XPU device
+
+Pass `--device xpu` wherever a FastWAM command exposes the device option. For
+example, the ActionDiT preprocessing step becomes:
+
+```bash
+python scripts/preprocess_action_dit_backbone.py \
+  --model-config configs/model/fastwam.yaml \
+  --output checkpoints/ActionDiT_linear_interp_Wan22_alphascale_1024hdim.pt \
+  --device xpu \
+  --dtype bfloat16
+```
+
+For evaluation managers, use the same checkpoint and task commands shown below;
+the branch's inference path supports XPU execution. If a local wrapper exposes
+a device argument, set it to `xpu`; otherwise leave device placement to the
+manager and model runtime.
+
+CUDA remains the recommended path for the fastest benchmark runs. On XPU,
+outputs should follow the same inference path, with small floating-point
+differences possible from backend-specific operation ordering.
 
 ## Index
 
